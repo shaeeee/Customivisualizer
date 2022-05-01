@@ -1,7 +1,7 @@
 {
 	"Author": "Shae",
 	"Name": "Customivisualizer",
-	"Punchline": "Customization Visualization.",
+	"Punchline": "Modified customization visualizer.",
 	"Description": "Allows clientsided previewing and modification of player appearance data.",
 	"InternalName": "customivisualizer",
 	"ApplicableVersion": "any",

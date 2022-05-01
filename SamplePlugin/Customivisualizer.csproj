@@ -20,8 +20,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Customivisualizer.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="..\Data\customivisualizer.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Customivisualizer.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
 
@@ -64,5 +71,9 @@
       <Private>false</Private>
     </Reference>
   </ItemGroup>
+
+  <Target Name="PreBuild" BeforeTargets="PreBuildEvent">
+    <Exec Command="echo This is $(ProjectDir)" />
+  </Target>
 
 </Project>
