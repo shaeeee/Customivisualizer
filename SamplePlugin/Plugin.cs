@@ -4,20 +4,17 @@ using Dalamud.Game.ClientState;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using System;
-using System.Reflection;
 using Dalamud.Hooking;
 using Dalamud.Logging;
 using System.Runtime.InteropServices;
 using Dalamud.Game.ClientState.Objects.Enums;
 using System.Threading.Tasks;
-using Dalamud.Game.ClientState.Objects.Types;
 
 namespace SamplePlugin
 {
 	public sealed class Plugin : IDalamudPlugin
 	{
 		private const uint FLAG_INVIS = (1 << 1) | (1 << 11);
-		private const uint CHARA_WINDOW_ACTOR_ID = 0xE0000000;
 		private const int OFFSET_RENDER_TOGGLE = 0x104;
 
 		public string Name => "Sample Plugin";
@@ -121,7 +118,7 @@ namespace SamplePlugin
 			
 			PluginLog.Log($"drawObjectPtr: {drawObjectPtr}, LocalPlayer drawObjectPtr: {playerDrawObjectPtr}");
 
-			// EXTREME HACK WARNING: When LocalPlayer drawnObjectPtr is zero during CharacterInitialize, the player seems to always be the actor initialized.
+			// EXTREME HACK WARNING: When LocalPlayer drawnObjectPtr is zero during CharacterInitialize, the player seems to always be the actor being initialized.
 			if (lastData != null && playerDrawObjectPtr == IntPtr.Zero)
 			{
 				this.ChangeCustomizeData(customizeDataPtr, lastData.Value);
@@ -132,7 +129,6 @@ namespace SamplePlugin
 
 		private CharaCustomizeData ByteArrayToStruct(byte[] customize)
 		{
-
 			GCHandle handle = GCHandle.Alloc(customize, GCHandleType.Pinned);
 			CharaCustomizeData customizeData;
 			try
