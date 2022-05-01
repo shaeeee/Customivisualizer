@@ -1,5 +1,8 @@
-﻿using ImGuiNET;
+﻿using Dalamud.Logging;
+using ImGuiNET;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 
 namespace SamplePlugin
@@ -8,17 +11,12 @@ namespace SamplePlugin
     // to do any cleanup
     class PluginUI : IDisposable
     {
+		// Customize array is 28 long, but the last 2 are not indexed by CustomizeIndex and thus not used here
+		private const int RELEVANT_INDICES = 26;
+
         private Configuration configuration;
-
-        private ImGuiScene.TextureWrap goatImage;
-
-        // this extra bool exists for ImGui, since you can't ref a property
-        private bool visible = false;
-        public bool Visible
-        {
-            get { return this.visible; }
-            set { this.visible = value; }
-        }
+		private Plugin plugin;
+		private Dalamud.Game.ClientState.ClientState clientState;
 
         private bool settingsVisible = false;
         public bool SettingsVisible
@@ -27,16 +25,40 @@ namespace SamplePlugin
             set { this.settingsVisible = value; }
         }
 
-        // passing in the image here just for simplicity
-        public PluginUI(Configuration configuration, ImGuiScene.TextureWrap goatImage)
+		public int[] NewCustomizeDataInt = new int[RELEVANT_INDICES];
+
+		private byte[] newCustomizeData = new byte[RELEVANT_INDICES];
+
+		public byte[] NewCustomizeData { get { return this.newCustomizeData; } private set { } }
+
+		public PluginUI(Configuration configuration, Plugin plugin, Dalamud.Game.ClientState.ClientState clientState)
         {
             this.configuration = configuration;
-            this.goatImage = goatImage;
+			this.plugin = plugin;
+			this.clientState = clientState;
+
+			// Init custom appearance values
+			if (this.clientState.LocalPlayer != null && this.configuration.CustomizationData != null)
+			{
+				Array.Copy(this.configuration.CustomizationData, NewCustomizeDataInt, RELEVANT_INDICES);
+				Array.Copy(this.configuration.CustomizationData, NewCustomizeData, RELEVANT_INDICES);
+			}
+			else
+			{
+				InitializeDefaults();
+			} 
         }
 
-        public void Dispose()
+		private void InitializeDefaults()
+		{
+			if (this.clientState.LocalPlayer == null) return;
+			Array.Copy(this.clientState.LocalPlayer.Customize, NewCustomizeDataInt, RELEVANT_INDICES);
+			Array.Copy(this.clientState.LocalPlayer.Customize, NewCustomizeData, RELEVANT_INDICES);
+		}
+
+		public void Dispose()
         {
-            this.goatImage.Dispose();
+            
         }
 
         public void Draw()
@@ -48,59 +70,73 @@ namespace SamplePlugin
             // There are other ways to do this, but it is generally best to keep the number of
             // draw delegates as low as possible.
 
-            DrawMainWindow();
             DrawSettingsWindow();
         }
 
-        public void DrawMainWindow()
-        {
-            if (!Visible)
-            {
-                return;
-            }
-
-            ImGui.SetNextWindowSize(new Vector2(375, 330), ImGuiCond.FirstUseEver);
-            ImGui.SetNextWindowSizeConstraints(new Vector2(375, 330), new Vector2(float.MaxValue, float.MaxValue));
-            if (ImGui.Begin("My Amazing Window", ref this.visible, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse))
-            {
-                ImGui.Text($"The random config bool is {this.configuration.SomePropertyToBeSavedAndWithADefault}");
-
-                if (ImGui.Button("Show Settings"))
-                {
-                    SettingsVisible = true;
-                }
-
-                ImGui.Spacing();
-
-                ImGui.Text("Have a goat:");
-                ImGui.Indent(55);
-                ImGui.Image(this.goatImage.ImGuiHandle, new Vector2(this.goatImage.Width, this.goatImage.Height));
-                ImGui.Unindent(55);
-            }
-            ImGui.End();
-        }
-
-        public void DrawSettingsWindow()
+		public void DrawSettingsWindow()
         {
             if (!SettingsVisible)
             {
                 return;
             }
 
-            ImGui.SetNextWindowSize(new Vector2(232, 75), ImGuiCond.Always);
-            if (ImGui.Begin("A Wonderful Configuration Window", ref this.settingsVisible,
-                ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse))
+			bool toggleCustomization = this.configuration.ToggleCustomization;
+			bool showCustomize = this.configuration.ShowCustomize;
+
+            if (ImGui.Begin("Config", ref this.settingsVisible))
             {
-                // can't ref a property, so use a local copy
-                var configValue = this.configuration.SomePropertyToBeSavedAndWithADefault;
-                if (ImGui.Checkbox("Random Config Bool", ref configValue))
-                {
-                    this.configuration.SomePropertyToBeSavedAndWithADefault = configValue;
-                    // can save immediately on change, if you don't want to provide a "Save and Close" button
-                    this.configuration.Save();
-                }
-            }
-            ImGui.End();
+				if (ImGui.Checkbox("Enable custom appearance", ref toggleCustomization))
+				{
+					plugin.UpdateCustomizeData();
+				};
+
+				this.configuration.ToggleCustomization = toggleCustomization;
+				this.configuration.Save();
+
+				ImGui.Checkbox("Show Customize array", ref showCustomize);
+				
+				this.configuration.ShowCustomize = showCustomize;
+				this.configuration.Save();
+
+				ImGui.Spacing();
+
+				if (showCustomize)
+				{
+					ImGui.BeginTable("t1", 2);
+					
+					for (int i = 0; i < RELEVANT_INDICES; i++)
+					{
+						ImGui.TableNextRow();
+						ImGui.TableNextColumn();
+						ImGui.Text($"{Enum.GetName(typeof(Dalamud.Game.ClientState.Objects.Enums.CustomizeIndex), i) ?? "Unknown"} = {clientState?.LocalPlayer?.Customize[i]}");
+						ImGui.SameLine();
+						ImGui.TableNextColumn();
+						ImGui.PushItemWidth(-1);
+						ImGui.InputInt($"l{i}", ref NewCustomizeDataInt[i]);
+						newCustomizeData[i] = (byte)NewCustomizeDataInt[i];
+						ImGui.PopItemWidth();
+					}
+					ImGui.EndTable();
+					ImGui.Spacing();
+				}
+				if (ImGui.Button("Save Appearance"))
+				{
+					this.configuration.CustomizationData = new byte[RELEVANT_INDICES];
+					Array.Copy(newCustomizeData, this.configuration.CustomizationData, RELEVANT_INDICES);
+					this.configuration.Save();
+					plugin.UpdateCustomizeData();
+				}
+				ImGui.SameLine();
+				if (ImGui.Button("Reset Appearance"))
+				{
+					this.configuration.CustomizationData = null;
+					this.configuration.Save();
+					InitializeDefaults();
+					plugin.UpdateCustomizeData();
+				}
+			}
+
+			ImGui.End();
         }
     }
 }

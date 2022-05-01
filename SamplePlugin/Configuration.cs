@@ -9,7 +9,11 @@ namespace SamplePlugin
     {
         public int Version { get; set; } = 0;
 
-        public bool SomePropertyToBeSavedAndWithADefault { get; set; } = true;
+        public bool ShowCustomize { get; set; }
+
+		public bool ToggleCustomization { get; set; }
+
+		public byte[]? CustomizationData { get; set; }
 
         // the below exist just to make saving less cumbersome
 
