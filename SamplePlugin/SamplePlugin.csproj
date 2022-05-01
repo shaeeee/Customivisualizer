@@ -1,12 +1,12 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Authors></Authors>
+    <Authors>Shae</Authors>
     <Company></Company>
     <Version>0.0.0.1</Version>
-    <Description>A sample plugin.</Description>
+    <Description>Allows clientsided previewing and modification of player appearance data.</Description>
     <Copyright></Copyright>
-    <PackageProjectUrl>https://github.com/goatcorp/SamplePlugin</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/shaeeee/SamplePlugin</PackageProjectUrl>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -22,10 +22,6 @@
   <ItemGroup>
     <Content Include="..\Data\samplePlugin.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="..\Data\goat.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
     </Content>
   </ItemGroup>
 

@@ -10,16 +10,16 @@ using System.Runtime.InteropServices;
 using Dalamud.Game.ClientState.Objects.Enums;
 using System.Threading.Tasks;
 
-namespace SamplePlugin
+namespace Customivisualizer
 {
 	public sealed class Plugin : IDalamudPlugin
 	{
 		private const uint FLAG_INVIS = (1 << 1) | (1 << 11);
 		private const int OFFSET_RENDER_TOGGLE = 0x104;
 
-		public string Name => "Sample Plugin";
+		public string Name => "Customivisualizer";
 
-		private const string commandToggle = "/natoggle";
+		private const string commandToggle = "/cvtoggle";
 
 		private DalamudPluginInterface PluginInterface { get; init; }
 		private CommandManager CommandManager { get; init; }
