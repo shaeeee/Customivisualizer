@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Authors>Shae</Authors>
     <Company></Company>
-    <Version>0.0.0.1</Version>
+    <Version>0.1.0.0</Version>
     <Description>Allows clientsided previewing and modification of player appearance data.</Description>
     <Copyright></Copyright>
     <PackageProjectUrl>https://github.com/shaeeee/SamplePlugin</PackageProjectUrl>
@@ -20,7 +20,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="..\Data\samplePlugin.json">
+    <Content Include="..\Data\customivisualizer.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
@@ -61,6 +61,7 @@
     </Reference>
     <Reference Include="FFXIVClientStructs">
       <HintPath>$(AppData)\XIVLauncher\addon\Hooks\dev\FFXIVClientStructs.dll</HintPath>
+      <Private>false</Private>
     </Reference>
   </ItemGroup>
 

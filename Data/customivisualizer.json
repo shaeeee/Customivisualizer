@@ -3,7 +3,7 @@
   "Name": "Customivisualizer",
   "Punchline": "Customization Visualization.",
   "Description": "Allows clientsided previewing and modification of player appearance data.",
-  "InternalName": "samplePlugin",
+  "InternalName": "customivisualizer",
   "ApplicableVersion": "any",
   "Tags": [
     "customization",
