@@ -20,6 +20,7 @@ namespace Customivisualizer
 		public string Name => "Customivisualizer";
 
 		private const string commandToggle = "/cvtoggle";
+		private const string commandConfig = "/cvcfg";
 
 		private DalamudPluginInterface PluginInterface { get; init; }
 		private CommandManager CommandManager { get; init; }
@@ -63,8 +64,12 @@ namespace Customivisualizer
 			{
 				HelpMessage = "Toggles custom appearance."
 			});
+			this.CommandManager.AddHandler(commandConfig, new CommandInfo(OnConfigCommand)
+			{
+				HelpMessage = "Opens customization menu."
+			});
 
-            this.PluginInterface.UiBuilder.Draw += DrawUI;
+			this.PluginInterface.UiBuilder.Draw += DrawUI;
             this.PluginInterface.UiBuilder.OpenConfigUi += DrawConfigUI;
 
 			if (this.Configuration.ToggleCustomization)
@@ -77,6 +82,7 @@ namespace Customivisualizer
         {
             this.PluginUi.Dispose();
 			this.CommandManager.RemoveHandler(commandToggle);
+			this.CommandManager.RemoveHandler(commandConfig);
 
 			this.charaInitHook.Disable();
 			this.charaInitHook.Dispose();
@@ -92,7 +98,12 @@ namespace Customivisualizer
 			UpdateCustomizeData();
 		}
 
-        private void DrawUI()
+		private void OnConfigCommand(string command, string args)
+		{
+			DrawConfigUI();
+		}
+
+		private void DrawUI()
         {
             this.PluginUi.Draw();
         }
