@@ -10,16 +10,17 @@ using System.Runtime.InteropServices;
 using Dalamud.Game.ClientState.Objects.Enums;
 using System.Threading.Tasks;
 
-namespace SamplePlugin
+namespace Customivisualizer
 {
 	public sealed class Plugin : IDalamudPlugin
 	{
 		private const uint FLAG_INVIS = (1 << 1) | (1 << 11);
 		private const int OFFSET_RENDER_TOGGLE = 0x104;
 
-		public string Name => "Sample Plugin";
+		public string Name => "Customivisualizer";
 
-		private const string commandToggle = "/natoggle";
+		private const string commandToggle = "/cvtoggle";
+		private const string commandConfig = "/cvcfg";
 
 		private DalamudPluginInterface PluginInterface { get; init; }
 		private CommandManager CommandManager { get; init; }
@@ -63,8 +64,12 @@ namespace SamplePlugin
 			{
 				HelpMessage = "Toggles custom appearance."
 			});
+			this.CommandManager.AddHandler(commandConfig, new CommandInfo(OnConfigCommand)
+			{
+				HelpMessage = "Opens customization menu."
+			});
 
-            this.PluginInterface.UiBuilder.Draw += DrawUI;
+			this.PluginInterface.UiBuilder.Draw += DrawUI;
             this.PluginInterface.UiBuilder.OpenConfigUi += DrawConfigUI;
 
 			if (this.Configuration.ToggleCustomization)
@@ -77,6 +82,7 @@ namespace SamplePlugin
         {
             this.PluginUi.Dispose();
 			this.CommandManager.RemoveHandler(commandToggle);
+			this.CommandManager.RemoveHandler(commandConfig);
 
 			this.charaInitHook.Disable();
 			this.charaInitHook.Dispose();
@@ -92,7 +98,12 @@ namespace SamplePlugin
 			UpdateCustomizeData();
 		}
 
-        private void DrawUI()
+		private void OnConfigCommand(string command, string args)
+		{
+			DrawConfigUI();
+		}
+
+		private void DrawUI()
         {
             this.PluginUi.Draw();
         }

@@ -1,7 +1,7 @@
 ﻿using Dalamud.Game.ClientState.Objects.Enums;
 using System.Runtime.InteropServices;
 
-namespace SamplePlugin
+namespace Customivisualizer
 {
 	[StructLayout(LayoutKind.Explicit)]
 	public struct CharaCustomizeData

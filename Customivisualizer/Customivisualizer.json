@@ -1,0 +1,13 @@
+{
+	"Author": "Shae",
+	"Name": "Customivisualizer",
+	"Punchline": "Modified customization visualizer.",
+	"Description": "Allows clientsided previewing and modification of player appearance data.",
+	"InternalName": "customivisualizer",
+	"ApplicableVersion": "any",
+	"Tags": [
+		"customization",
+		"customize"
+	],
+	"IconUrl": "https://user-images.githubusercontent.com/12670730/113008567-6ebdcb80-9177-11eb-91bd-6863196d9cd3.png"
+}

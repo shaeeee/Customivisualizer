@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace SamplePlugin
+namespace Customivisualizer
 {
 	public enum Race : byte
 	{
