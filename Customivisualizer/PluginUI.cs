@@ -38,22 +38,45 @@ namespace Customivisualizer
 			this.clientState = clientState;
 
 			// Init custom appearance values
-			if (this.clientState.LocalPlayer != null && this.configuration.CustomizationData != null)
-			{
-				Array.Copy(this.configuration.CustomizationData, NewCustomizeDataInt, RELEVANT_INDICES);
-				Array.Copy(this.configuration.CustomizationData, NewCustomizeData, RELEVANT_INDICES);
-			}
-			else
+			if (!InitializeSaved())
 			{
 				InitializeDefaults();
-			} 
-        }
+			}
+		}
+
+		private bool InitializeSaved()
+		{
+			if (this.configuration.CustomizationData != null)
+			{
+				PluginLog.Debug($"Successfully loaded saved appearance configuration");
+				Array.Copy(this.configuration.CustomizationData, NewCustomizeDataInt, RELEVANT_INDICES);
+				Array.Copy(this.configuration.CustomizationData, NewCustomizeData, RELEVANT_INDICES);
+				return true;
+			}
+			return false;
+		}
 
 		private void InitializeDefaults()
 		{
 			if (this.clientState.LocalPlayer == null) return;
 			Array.Copy(this.clientState.LocalPlayer.Customize, NewCustomizeDataInt, RELEVANT_INDICES);
 			Array.Copy(this.clientState.LocalPlayer.Customize, NewCustomizeData, RELEVANT_INDICES);
+		}
+
+		private void SaveAppearance()
+		{
+			this.configuration.CustomizationData = new byte[RELEVANT_INDICES];
+			Array.Copy(newCustomizeData, this.configuration.CustomizationData, RELEVANT_INDICES);
+			this.configuration.Save();
+			plugin.UpdateCustomizeData();
+		}
+
+		private void ResetAppearance()
+		{
+			this.configuration.CustomizationData = null;
+			this.configuration.Save();
+			InitializeDefaults();
+			plugin.UpdateCustomizeData();
 		}
 
 		public void Dispose()
@@ -121,18 +144,12 @@ namespace Customivisualizer
 				}
 				if (ImGui.Button("Save Appearance"))
 				{
-					this.configuration.CustomizationData = new byte[RELEVANT_INDICES];
-					Array.Copy(newCustomizeData, this.configuration.CustomizationData, RELEVANT_INDICES);
-					this.configuration.Save();
-					plugin.UpdateCustomizeData();
+					SaveAppearance();
 				}
 				ImGui.SameLine();
 				if (ImGui.Button("Reset Appearance"))
 				{
-					this.configuration.CustomizationData = null;
-					this.configuration.Save();
-					InitializeDefaults();
-					plugin.UpdateCustomizeData();
+					ResetAppearance();
 				}
 			}
 
