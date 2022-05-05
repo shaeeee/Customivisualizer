@@ -1,9 +1,7 @@
 ﻿using Dalamud.Logging;
+using Dalamud.Game.ClientState.Objects.Enums;
 using ImGuiNET;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
 
 namespace Customivisualizer
 {
@@ -96,6 +94,16 @@ namespace Customivisualizer
             DrawSettingsWindow();
         }
 
+		private void AdjustTribe(int race, ref int tribe)
+		{
+			tribe = race * 2 - tribe % 2;
+		}
+
+		private void AdjustGender(int race, ref int gender)
+		{
+			gender = (Race)race == Race.HROTHGAR ? 0 : gender % 2;
+		}
+
 		public void DrawSettingsWindow()
         {
             if (!SettingsVisible)
@@ -104,9 +112,10 @@ namespace Customivisualizer
             }
 
 			bool toggleCustomization = this.configuration.ToggleCustomization;
+			bool alwaysReload = this.configuration.AlwaysReload;
 			bool showCustomize = this.configuration.ShowCustomize;
 
-            if (ImGui.Begin("Config", ref this.settingsVisible))
+            if (ImGui.Begin("Config", ref this.settingsVisible, ImGuiWindowFlags.AlwaysAutoResize))
             {
 				if (ImGui.Checkbox("Enable custom appearance", ref toggleCustomization))
 				{
@@ -114,6 +123,11 @@ namespace Customivisualizer
 				};
 
 				this.configuration.ToggleCustomization = toggleCustomization;
+				this.configuration.Save();
+
+				ImGui.Checkbox("Always update appearance", ref alwaysReload);
+
+				this.configuration.AlwaysReload = alwaysReload;
 				this.configuration.Save();
 
 				ImGui.Checkbox("Show Customize array", ref showCustomize);
@@ -125,24 +139,9 @@ namespace Customivisualizer
 
 				if (showCustomize)
 				{
-					ImGui.BeginTable("t1", 2);
-					
-					for (int i = 0; i < RELEVANT_INDICES; i++)
-					{
-						ImGui.TableNextRow();
-						ImGui.TableNextColumn();
-						ImGui.Text($"{Enum.GetName(typeof(Dalamud.Game.ClientState.Objects.Enums.CustomizeIndex), i) ?? "Unknown"} = {clientState?.LocalPlayer?.Customize[i]}");
-						ImGui.SameLine();
-						ImGui.TableNextColumn();
-						ImGui.PushItemWidth(-1);
-						ImGui.InputInt($"l{i}", ref NewCustomizeDataInt[i]);
-						newCustomizeData[i] = (byte)NewCustomizeDataInt[i];
-						ImGui.PopItemWidth();
-					}
-					ImGui.EndTable();
-					ImGui.Spacing();
+					DrawCustomizationOptions();
 				}
-				if (ImGui.Button("Save Appearance"))
+				if (ImGui.Button("Update Appearance"))
 				{
 					SaveAppearance();
 				}
@@ -155,5 +154,75 @@ namespace Customivisualizer
 
 			ImGui.End();
         }
+
+		private void DrawCustomizationOptions()
+		{
+			var raceAndTribe = plugin.GetRaceAndTribe(NewCustomizeDataInt[(int)CustomizeIndex.Race], NewCustomizeDataInt[(int)CustomizeIndex.Tribe]);
+
+			ImGui.BeginTable("t1", 3, ImGuiTableFlags.SizingStretchProp);
+			ImGui.TableSetupColumn("c0", ImGuiTableColumnFlags.WidthFixed, 150);
+			ImGui.TableSetupColumn("c1", ImGuiTableColumnFlags.WidthFixed, 100);
+			ImGui.TableSetupColumn("c2", ImGuiTableColumnFlags.WidthFixed, 150);
+
+			bool performReload = false;
+
+			for (int i = 0; i < RELEVANT_INDICES; i++)
+			{
+				ImGui.TableNextRow();
+				ImGui.TableNextColumn();
+				ImGui.Text($"{Enum.GetName(typeof(CustomizeIndex), i) ?? "Unknown"} = {clientState?.LocalPlayer?.Customize[i]}");
+				ImGui.SameLine();
+				ImGui.TableNextColumn();
+				// For special cases
+				switch ((CustomizeIndex)i)
+				{
+					case CustomizeIndex.Race:
+						ImGui.PushItemWidth(-1);
+						if (ImGui.InputInt($"{i}", ref NewCustomizeDataInt[i]) && this.configuration.AlwaysReload) performReload = true;
+						ImGui.PopItemWidth();
+						ImGui.TableNextColumn();
+						ImGui.Text($"{raceAndTribe?[0]}");
+						newCustomizeData[i] = (byte)NewCustomizeDataInt[i];
+						break;
+
+					case CustomizeIndex.Gender:
+						AdjustGender(NewCustomizeDataInt[(int)CustomizeIndex.Race], ref NewCustomizeDataInt[i]);
+						ImGui.PushItemWidth(-1);
+						if (ImGui.InputInt($"{i}", ref NewCustomizeDataInt[i]) && this.configuration.AlwaysReload) performReload = true;
+						ImGui.PopItemWidth();
+						ImGui.TableNextColumn();
+						ImGui.Text(NewCustomizeDataInt[i] == 0 ? "Masculine" : "Feminine");
+						newCustomizeData[i] = (byte)NewCustomizeDataInt[i];
+						newCustomizeData[i] = (byte)NewCustomizeDataInt[i];
+						break;
+
+					case CustomizeIndex.Tribe:
+						AdjustTribe(NewCustomizeDataInt[(int)CustomizeIndex.Race], ref NewCustomizeDataInt[i]);
+						ImGui.PushItemWidth(-1);
+						if (ImGui.InputInt($"{i}", ref NewCustomizeDataInt[i]) && this.configuration.AlwaysReload) performReload = true;
+						ImGui.PopItemWidth();
+						ImGui.TableNextColumn();
+						ImGui.TableSetupColumn("c2", ImGuiTableColumnFlags.WidthFixed, 300);
+						ImGui.Text($"{raceAndTribe?[1]}");
+						newCustomizeData[i] = (byte)NewCustomizeDataInt[i];
+						break;
+
+					default:
+						ImGui.PushItemWidth(-1);
+						if (ImGui.InputInt($"{i}", ref NewCustomizeDataInt[i]) && this.configuration.AlwaysReload) performReload = true;
+						ImGui.PopItemWidth();
+						newCustomizeData[i] = (byte)NewCustomizeDataInt[i];
+						break;
+				}
+			}
+
+			if (performReload)
+			{
+				SaveAppearance();
+			}
+
+			ImGui.EndTable();
+			ImGui.Spacing();
+		}
     }
 }

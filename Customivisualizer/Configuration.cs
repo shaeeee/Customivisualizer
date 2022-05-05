@@ -13,6 +13,8 @@ namespace Customivisualizer
 
 		public bool ToggleCustomization { get; set; }
 
+		public bool AlwaysReload { get; set; }
+
 		public byte[]? CustomizationData { get; set; }
 
         // the below exist just to make saving less cumbersome
