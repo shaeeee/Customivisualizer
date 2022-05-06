@@ -1,0 +1,21 @@
+[
+	{
+		"Author": "Shae",
+		"Name": "Customivisualizer",
+		"Description": "Modified customization visualizer.",
+		"InternalName": "Customivisualizer",
+		"AssemblyVersion": "0.1.0.0",
+		"TestingAssemblyVersion": "0.1.0.0",
+		"RepoUrl": "https://github.com/shaeeee/Customivisualizer",
+		"ApplicableVersion": "any",
+		"DalamudApiLevel": 6,
+		"IsHide": "False",
+		"IsTestingExclusive": "False",
+		"DownloadCount": 0,
+		"LastUpdate": 0,
+		"DownloadLinkInstall": "https://github.com/shaeeee/Customivisualizer/releases/download/Latest/latest.zip",
+		"DownloadLinkTesting": "https://github.com/shaeeee/Customivisualizer/releases/download/Latest/latest.zip",
+		"DownloadLinkUpdate": "https://github.com/shaeeee/Customivisualizer/releases/download/Latest/latest.zip",
+		"IconUrl": "https://cdn1.iconfinder.com/data/icons/logos-brands-in-colors/231/among-us-player-pink-512.png"
+	}
+]

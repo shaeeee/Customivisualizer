@@ -6,7 +6,7 @@
     <Version>0.1.0.0</Version>
     <Description>Allows clientsided previewing and modification of player appearance data.</Description>
     <Copyright></Copyright>
-    <PackageProjectUrl>https://github.com/shaeeee/SamplePlugin</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/shaeeee/Customivisualizer</PackageProjectUrl>
   </PropertyGroup>
 
   <PropertyGroup>
