@@ -8,6 +8,9 @@ using Dalamud.Hooking;
 using Dalamud.Logging;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using Dalamud.Data;
+using Dalamud.Game.ClientState.Objects;
+using Dalamud.Game.ClientState.Conditions;
 
 namespace Customivisualizer
 {
@@ -19,50 +22,59 @@ namespace Customivisualizer
 
 		private const string CHARA_INIT_SIG = "48 89 5C 24 ?? 48 89 6C 24 ?? 48 89 74 24 ?? 57 48 83 EC 30 48 8B F9 48 8B EA 48 81 C1 ?? ?? ?? ?? E8 ?? ?? ?? ??";
 		private const string CHARA_FLAG_SIG = "48 8D 81 70 3D 00 00 84 D2 48 0F 45 C8 48 8B C1 C3";
-
+		
 		//MANUAL SETTER ADDR:	0x7FF6129F72A0
 		//AUTO SETTER ADDR:		0x7FF612F78720
 
 		public string Name => "Customivisualizer";
 
-		private const string commandToggle = "/cvtoggle";
+		private const string commandToggle = "/cv";
 		private const string commandConfig = "/cvcfg";
-
-		private const string commandTest = "/cvtest";
 
 		private DalamudPluginInterface PluginInterface { get; init; }
 		private CommandManager CommandManager { get; init; }
 		private ClientState ClientState { get; init; }
 		private SigScanner SigScanner { get; init; }
-		private Dalamud.Data.DataManager DataManager { get; init; }
+		private DataManager DataManager { get; init; }
+		private Framework Framework { get; init; }
+		private ObjectTable ObjectTable { get; init; }
+		private Condition Condition { get; init; }
+
         private Configuration Configuration { get; init; }
         private PluginUI PluginUi { get; init; }
+		private UIHelper UIHelper { get; init; }
+		private CharaDataOverride CharaDataOverride { get; init; }
+		private Overrider Overrider { get; init; }
 
 		private delegate IntPtr CharacterInitialize(IntPtr drawObjectPtr, IntPtr customizeDataPtr);
 		private unsafe delegate IntPtr SetCharacterFlag(IntPtr ptr, char* flag, IntPtr actorPtr);
 		private Hook<CharacterInitialize> charaInitHook;
 		private Hook<SetCharacterFlag> setCharacterFlagHook;
 
-		private CharaCustomizeData? lastData;
-
 		private Lumina.Excel.ExcelSheet<Lumina.Excel.GeneratedSheets.CharaMakeType>? charaSheet;
 		private Lumina.Excel.ExcelSheet<Lumina.Excel.GeneratedSheets.OnlineStatus>? statusSheet;
 
-		private uint? prevOnlineStatus;
-		private uint onlineStatus;
+		private bool inCutscene;
+		private bool outCutsceneRedrawQueued;
 
 		public unsafe Plugin(
             [RequiredVersion("1.0")] DalamudPluginInterface pluginInterface,
             [RequiredVersion("1.0")] CommandManager commandManager,
 			[RequiredVersion("1.0")] ClientState clientState,
 			[RequiredVersion("1.0")] SigScanner sigScanner,
-			[RequiredVersion("1.0")] Dalamud.Data.DataManager dataManager)
+			[RequiredVersion("1.0")] DataManager dataManager,
+			[RequiredVersion("1.0")] Framework framework,
+			[RequiredVersion("1.0")] ObjectTable objectTable,
+			[RequiredVersion("1.0")] Condition condition)
         {
             this.PluginInterface = pluginInterface;
             this.CommandManager = commandManager;
 			this.ClientState = clientState;
 			this.SigScanner = sigScanner;
 			this.DataManager = dataManager;
+			this.Framework = framework;
+			this.ObjectTable = objectTable;
+			this.Condition = condition;
 
 			charaSheet = this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.CharaMakeType>();
 			statusSheet = this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.OnlineStatus>();
@@ -73,18 +85,23 @@ namespace Customivisualizer
 			FFXIVClientStructs.Resolver.Initialize();
 
 			var charaInitAddr =	this.SigScanner.ScanText(CHARA_INIT_SIG);
-			PluginLog.Log($"Found Initialize address: {charaInitAddr.ToInt64():X}");
+			PluginLog.LogDebug($"Found Initialize address: {charaInitAddr.ToInt64():X}");
 			this.charaInitHook ??=
 				new Hook<CharacterInitialize>(charaInitAddr, CharacterInitializeDetour);
 			this.charaInitHook.Enable();
 
 			var charaFlagAddr = this.SigScanner.ScanText(CHARA_FLAG_SIG);
-			PluginLog.Log($"Found Status address: {charaFlagAddr.ToInt64():X}");
+			PluginLog.LogDebug($"Found Status address: {charaFlagAddr.ToInt64():X}");
 			this.setCharacterFlagHook ??=
 				new Hook<SetCharacterFlag>(charaFlagAddr, SetCharacterFlagDetour);
 			this.setCharacterFlagHook.Enable();
 
-			this.PluginUi = new PluginUI(this.Configuration, this, this.ClientState);
+			this.CharaDataOverride = new();
+			this.CharaDataOverride.DataChanged += OnCharaDataChanged;
+
+			this.UIHelper = new UIHelper(this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.CharaMakeType>());
+			this.Overrider = new Overrider(this.Framework, clientState, this.CharaDataOverride);
+			this.PluginUi = new PluginUI(this.Configuration, this.UIHelper, this.ClientState, this.CharaDataOverride);
 
 			this.CommandManager.AddHandler(commandToggle, new CommandInfo(OnToggleCommand)
 			{
@@ -94,44 +111,81 @@ namespace Customivisualizer
 			{
 				HelpMessage = "Opens customization menu."
 			});
-			this.CommandManager.AddHandler(commandTest, new CommandInfo(OnTestCommand)
-			{
-				HelpMessage = "Test."
-			});
 
 			this.PluginInterface.UiBuilder.Draw += DrawUI;
-            this.PluginInterface.UiBuilder.OpenConfigUi += DrawConfigUI;
-			
-
-			if (this.Configuration.ToggleCustomization)
-			{
-				UpdateCustomizeData();
-			}
+			this.PluginInterface.UiBuilder.OpenConfigUi += DrawConfigUI;
         }
 
         public void Dispose()
         {
             this.PluginUi.Dispose();
+
 			this.CommandManager.RemoveHandler(commandToggle);
 			this.CommandManager.RemoveHandler(commandConfig);
-
-			this.CommandManager.RemoveHandler(commandTest);
 
 			this.charaInitHook.Disable();
 			this.charaInitHook.Dispose();
 
 			this.setCharacterFlagHook.Disable();
 			this.setCharacterFlagHook.Dispose();
+
+			this.Overrider.Dispose();
+
+			this.CharaDataOverride.DataChanged -= OnCharaDataChanged;
 			
+			RedrawPlayer();
+		}
+
+		private void OnCharaDataChanged(object? sender, EventArgs e)
+		{
+			if (this.Configuration.OverrideMode == Configuration.Override.HARD && this.Configuration.ToggleCustomization && !Overrider.Enabled)
+			{
+				Overrider.Enable();
+			}
+			if ((this.Configuration.OverrideMode == Configuration.Override.SOFT || !this.Configuration.ToggleCustomization) && Overrider.Enabled)
+			{
+				Overrider.Disable();
+			}
 			RedrawPlayer();
 		}
 
 		private void OnToggleCommand(string command, string args)
 		{
-			this.Configuration.ToggleCustomization = !this.Configuration.ToggleCustomization;
-			this.Configuration.Save();
+			var allArgs = args.Split(" ");
+			switch (allArgs[0])
+			{
+				default:
+					this.Configuration.ToggleCustomization = !this.Configuration.ToggleCustomization;
+					this.Configuration.Save();
 
-			UpdateCustomizeData();
+					RedrawPlayer();
+					break;
+				case "oe":
+					this.Overrider.Enable();
+					break;
+				case "od":
+					this.Overrider.Disable();
+					break;
+				case "r":
+					RedrawPlayer();
+					break;
+				case "test":
+					OnTestCommand();
+					break;
+				case "l":
+					OnLookup();
+					break;
+				case "l2":
+					OnLookup2();
+					break;
+				case "hex":
+					ToHex(allArgs[1]);
+					break;
+				case "dec":
+					ToDecimal(allArgs[1]);
+					break;
+
+			}
 		}
 
 		private void OnConfigCommand(string command, string args)
@@ -139,45 +193,40 @@ namespace Customivisualizer
 			DrawConfigUI();
 		}
 
-		private unsafe void OnTestCommand(string command, string args)
+		private unsafe void OnTestCommand()
 		{
 			if (this.ClientState.LocalPlayer == null) return;
-			var adress = (FFXIVClientStructs.FFXIV.Client.Game.Character.BattleChara*)(void*)this.ClientState.LocalPlayer.Address;
-			var chara = Marshal.PtrToStructure<CharaCustomizeData>((IntPtr)adress->Character.CustomizeData);
-			var sheet = this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.OnlineStatus>();
-			var row = sheet?.GetRow(adress->Character.OnlineStatus);
-			PluginLog.Log($"Test: {sheet?.Name}::{row?.Name}({row?.RowId})");
-			
+			var battleChara = (FFXIVClientStructs.FFXIV.Client.Game.Character.BattleChara*)(void*)this.ClientState.LocalPlayer.Address;
+			byte[] bytes = new byte[26];
+			Marshal.Copy((IntPtr)battleChara->Character.EquipSlotData, bytes, 0, 26);
+			PluginLog.Log($"EquipSlotData: {string.Join(", ", bytes)}");
 		}
 
-		public unsafe string[]? GetRaceAndTribe(int? tribe = null, int? gender = null)
+		private void OnLookup()
 		{
-			if (this.ClientState.LocalPlayer == null || charaSheet == null) return null;
-
-			uint index;
-			if (tribe == null || gender == null)
+			var s = this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.EquipSlotCategory>();
+			for (uint i = 0; i < s?.RowCount; i++)
 			{
-				var adress = (FFXIVClientStructs.FFXIV.Client.Game.Character.BattleChara*)(void*)this.ClientState.LocalPlayer.Address;
-				var chara = Marshal.PtrToStructure<CharaCustomizeData>((IntPtr)adress->Character.CustomizeData);
-				index = GetCharaTypeIndex(chara);
+				var r = s?.GetRow(i);
+				PluginLog.Log($"{i:00}::SoulCrystal({r?.SoulCrystal:00}), Mainhand({r?.MainHand:00}), Offhand({r?.OffHand:00}), Head({r?.Head:00}), Body({r?.Body:00})");
 			}
-			else
-			{
-				index = GetCharaTypeIndex(tribe.Value, gender.Value);
-			}
-			var row = charaSheet?.GetRow(index);
-			return new string[] {$"{row?.Race.Value?.Feminine.ToString()}", $"{row?.Tribe.Value?.Feminine.ToString()}"};
 		}
 
-		// Function to obtain correct CharaMakeType excel row among every race, tribe and gender
-		private uint GetCharaTypeIndex(CharaCustomizeData chara)
+		private void OnLookup2()
 		{
-			return GetCharaTypeIndex(chara.Tribe, chara.Gender);
+			var s = this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.Item>();
+			var r = s?.GetRow(16623);
+			PluginLog.Log($"{r?.Name}");
 		}
 
-		private uint GetCharaTypeIndex(int tribe, int gender)
+		private void ToHex(string value)
 		{
-			return (uint)(2u * tribe + gender - 2u);
+			PluginLog.Log($"0x{int.Parse(value):X}");
+		}
+
+		private void ToDecimal(string value)
+		{
+			PluginLog.Log($"{Convert.ToInt32(value, 16)}");
 		}
 
 		private void DrawUI()
@@ -190,53 +239,89 @@ namespace Customivisualizer
             this.PluginUi.SettingsVisible = true;
         }
 
-		public void UpdateCustomizeData()
-		{
-			lastData = ByteArrayToStruct(this.PluginUi.NewCustomizeData);
-			RedrawPlayer();
-		}
-
 		private unsafe IntPtr CharacterInitializeDetour(IntPtr drawObjectPtr, IntPtr customizeDataPtr)
 		{
-			if (this.ClientState.LocalPlayer == null || !this.Configuration.ToggleCustomization || onlineStatus == VIEWING_CUTSCENE_STATUS) return charaInitHook.Original(drawObjectPtr, customizeDataPtr);
-
-			var customData = Marshal.PtrToStructure<CharaCustomizeData>(customizeDataPtr);
-
-			var playerDrawObjectPtr = (IntPtr) Marshal.PtrToStructure<FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject>(this.ClientState.LocalPlayer.Address).DrawObject;
-			
-			PluginLog.LogDebug($"drawObjectPtr: {drawObjectPtr}, LocalPlayer drawObjectPtr: {playerDrawObjectPtr}");
-
-			// EXTREME HACK WARNING: When LocalPlayer drawnObjectPtr is zero during CharacterInitialize, the player seems to always be the actor being initialized.
-			if (lastData != null && playerDrawObjectPtr == IntPtr.Zero)
+			if (this.ClientState.LocalPlayer == null || !this.Configuration.ToggleCustomization) return charaInitHook.Original(drawObjectPtr, customizeDataPtr);
+			return this.Configuration.OverrideMode switch
 			{
-				this.ChangeCustomizeData(customizeDataPtr, lastData.Value);
-			}
-
-			return charaInitHook.Original(drawObjectPtr, customizeDataPtr);
+				Configuration.Override.SOFT => SoftOverride(drawObjectPtr, customizeDataPtr),
+				Configuration.Override.HARD => charaInitHook.Original(drawObjectPtr, customizeDataPtr),
+				_ => charaInitHook.Original(drawObjectPtr, customizeDataPtr),
+			};
 		}
 
-		private unsafe uint GetTrueOnlineStatus()
+		private unsafe IntPtr GetDrawObjectPtr()
 		{
-			var player = this.ClientState.LocalPlayer;
-			if (player == null) return 0;
-			var index = ((FFXIVClientStructs.FFXIV.Client.Game.Character.BattleChara*) (void*)player.Address)->Character.OnlineStatus;
-			var row = statusSheet?.GetRow(index);
-			return row != null ? row.RowId : 0;
+			if (this.ClientState.LocalPlayer == null) return IntPtr.Zero;
+			var battleChara = (FFXIVClientStructs.FFXIV.Client.Game.Character.BattleChara*)(void*)this.ClientState.LocalPlayer.Address;
+			return (IntPtr)battleChara->Character.GameObject.DrawObject;
+		}
+
+		private bool InCutscene()
+		{
+			return Condition[ConditionFlag.OccupiedInCutSceneEvent] ||
+					   Condition[ConditionFlag.WatchingCutscene] ||
+					   Condition[ConditionFlag.WatchingCutscene78];
+		}
+
+		private IntPtr SoftOverride(IntPtr drawObjectPtr, IntPtr customizeDataPtr)
+		{
+			if (InCutscene()) return charaInitHook.Original(drawObjectPtr, customizeDataPtr);
+
+			var oldCustomizeData = Marshal.PtrToStructure<CharaCustomizeData>(customizeDataPtr);
+
+			// Back up original customize data
+			byte[] origData = new byte[28];
+			Marshal.Copy(customizeDataPtr, origData, 0, 28);
+
+			var playerDrawObjectPtr = GetDrawObjectPtr();
+
+			// If the pointer is zero, player is chara being loaded (except in cutscenes/GPose/equipment view)
+			if (playerDrawObjectPtr == IntPtr.Zero)
+			{
+				PluginLog.Log($"CharaInit");
+				this.CharaDataOverride.ChangeCustomizeData(customizeDataPtr);
+			}
+
+			IntPtr result;
+			try
+			{
+				result = charaInitHook.Original(drawObjectPtr, customizeDataPtr);
+				this.PluginUi.ShowInvalidDataWarning = false;
+			}
+			catch (Exception)
+			{
+				// Restore backed up customize data
+				Marshal.Copy(origData, 0, customizeDataPtr, 28);
+				result = charaInitHook.Original(drawObjectPtr, customizeDataPtr);
+				this.PluginUi.ShowInvalidDataWarning = true;
+			}
+
+			return result;
+		}
+
+		private IntPtr HardOverride(IntPtr drawObjectPtr, IntPtr customizeDataPtr)
+		{
+			Overrider.Apply();
+			// CustomizeDataPtr points to a copy of actual CustomizeData, so let SoftOverride take care of the immediate effect
+			return SoftOverride(drawObjectPtr, customizeDataPtr);
 		}
 
 		private async void OnOnlineStatusChanged()
 		{
-			await Task.Delay(50);
-			var currentData = GetTrueOnlineStatus();
-			prevOnlineStatus = prevOnlineStatus == null ? currentData : onlineStatus;
-			onlineStatus = currentData;
-			PluginLog.LogDebug($"Online status changed from {prevOnlineStatus} to {onlineStatus}");
-			if (prevOnlineStatus == VIEWING_CUTSCENE_STATUS) RedrawPlayer();
+			inCutscene = InCutscene() || inCutscene;
+			if (!InCutscene() && inCutscene && !outCutsceneRedrawQueued && this.Configuration.ToggleCustomization)
+			{
+				outCutsceneRedrawQueued = true;
+				await Task.Delay(200);
+				RedrawPlayer();
+				outCutsceneRedrawQueued = false;
+				inCutscene = false;
+			}
 		}
 
 		private unsafe IntPtr SetCharacterFlagDetour(IntPtr ptr, char* flag, IntPtr actorPtr)
 		{
-			//PluginLog.LogDebug($"ptr:{ptr.ToInt64()}, flag:{new string(flag)}, actorPtr?:{actorPtr}");
 			IntPtr? localPlayerPtr;
 			if ((localPlayerPtr = this.ClientState.LocalPlayer?.Address) == null || actorPtr != localPlayerPtr.Value)
 			{
@@ -244,71 +329,6 @@ namespace Customivisualizer
 			}
 			OnOnlineStatusChanged();
 			return setCharacterFlagHook.Original(ptr, flag, actorPtr);
-		}
-
-		private CharaCustomizeData ByteArrayToStruct(byte[] customize)
-		{
-			GCHandle handle = GCHandle.Alloc(customize, GCHandleType.Pinned);
-			CharaCustomizeData customizeData;
-			try
-			{
-				customizeData = Marshal.PtrToStructure<CharaCustomizeData>(handle.AddrOfPinnedObject());
-			}
-			finally
-			{
-				handle.Free();
-			}
-			return customizeData;
-		}
-
-		private void ChangeCustomizeData(IntPtr customizeDataPtr, CharaCustomizeData targetCustomizeData)
-		{
-			var customData = Marshal.PtrToStructure<CharaCustomizeData>(customizeDataPtr);
-
-			customData.Race = targetCustomizeData.Race;
-			
-			// Special-case Hrothgar gender to prevent fuckery
-			customData.Gender = (Race)targetCustomizeData.Race switch
-			{
-				Race.HROTHGAR => 0, // Force male for Hrothgar
-				_ => targetCustomizeData.Gender
-			};
-			
-			customData.Tribe = (byte)(customData.Race * 2 - targetCustomizeData.Tribe % 2);
-
-			// Constrain body type to 0-1 so we don't crash the game
-			customData.ModelType = (byte)(targetCustomizeData.ModelType % 2);
-
-			customData.FaceType = targetCustomizeData.FaceType;
-			customData.HairStyle = targetCustomizeData.HairStyle;
-			customData.HasHighlights = targetCustomizeData.HasHighlights;
-			customData.SkinColor = targetCustomizeData.SkinColor;
-			customData.EyeColor = targetCustomizeData.EyeColor;
-			customData.HairColor = targetCustomizeData.HairColor;
-			customData.HairColor2 = targetCustomizeData.HairColor2;
-			customData.FaceFeatures = targetCustomizeData.FaceFeatures;
-			customData.FaceFeaturesColor = targetCustomizeData.FaceFeaturesColor;
-			customData.Eyebrows = targetCustomizeData.Eyebrows;
-			customData.EyeColor2 = targetCustomizeData.EyeColor2;
-			customData.EyeShape = targetCustomizeData.EyeShape;
-			customData.NoseShape = targetCustomizeData.NoseShape;
-			customData.JawShape = targetCustomizeData.JawShape;
-			customData.LipStyle = targetCustomizeData.LipStyle;
-
-			// Hrothgar have a limited number of lip colors?
-			customData.LipColor = (Race)targetCustomizeData.Race switch
-			{
-				Race.HROTHGAR => (byte)(customData.LipColor % 5 + 1),
-				_ => targetCustomizeData.LipColor
-			};
-
-			customData.RaceFeatureSize = targetCustomizeData.RaceFeatureSize;
-			customData.RaceFeatureType = targetCustomizeData.RaceFeatureType;
-			customData.BustSize = targetCustomizeData.BustSize;
-			customData.Facepaint = targetCustomizeData.Facepaint;
-			customData.FacepaintColor = targetCustomizeData.FacepaintColor;
-
-			Marshal.StructureToPtr(customData, customizeDataPtr, true);
 		}
 
 		private async void RedrawPlayer()

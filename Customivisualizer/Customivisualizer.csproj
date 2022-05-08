@@ -20,6 +20,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Overriderx.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Remove="Customivisualizer.json" />
   </ItemGroup>
 

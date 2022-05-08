@@ -2,6 +2,7 @@
 using Dalamud.Game.ClientState.Objects.Enums;
 using ImGuiNET;
 using System;
+using Dalamud.Game.ClientState;
 
 namespace Customivisualizer
 {
@@ -13,42 +14,46 @@ namespace Customivisualizer
 		private const int RELEVANT_INDICES = 26;
 
         private Configuration configuration;
-		private Plugin plugin;
-		private Dalamud.Game.ClientState.ClientState clientState;
+		private UIHelper uiHelper;
+		private ClientState clientState;
+		private CharaDataOverride charaDataOverride;
 
         private bool settingsVisible = false;
         public bool SettingsVisible
         {
-            get { return this.settingsVisible; }
-            set { this.settingsVisible = value; }
+            get { return settingsVisible; }
+            set { settingsVisible = value; }
         }
 
-		public int[] NewCustomizeDataInt = new int[RELEVANT_INDICES];
+		private int[] newCustomizeDataInt = new int[RELEVANT_INDICES];
 
-		private byte[] newCustomizeData = new byte[RELEVANT_INDICES];
+		private byte[] newCustomizeData = new byte[26];
 
-		public byte[] NewCustomizeData { get { return this.newCustomizeData; } private set { } }
+		public bool ShowInvalidDataWarning { get; set; }
 
-		public PluginUI(Configuration configuration, Plugin plugin, Dalamud.Game.ClientState.ClientState clientState)
+		public PluginUI(Configuration configuration, UIHelper uiHelper, ClientState clientState, CharaDataOverride charaDataOverride)
         {
             this.configuration = configuration;
-			this.plugin = plugin;
+			this.uiHelper = uiHelper;
 			this.clientState = clientState;
+			this.charaDataOverride = charaDataOverride;
 
 			// Init custom appearance values
 			if (!InitializeSaved())
 			{
 				InitializeDefaults();
 			}
+			charaDataOverride.ManualInvokeDataChanged();
 		}
 
 		private bool InitializeSaved()
 		{
-			if (this.configuration.CustomizationData != null)
+			if (configuration.CustomizationData != null)
 			{
-				PluginLog.Debug($"Successfully loaded saved appearance configuration");
-				Array.Copy(this.configuration.CustomizationData, NewCustomizeDataInt, RELEVANT_INDICES);
-				Array.Copy(this.configuration.CustomizationData, NewCustomizeData, RELEVANT_INDICES);
+				Array.Copy(configuration.CustomizationData, newCustomizeDataInt, RELEVANT_INDICES);
+				Array.Copy(configuration.CustomizationData, newCustomizeData, RELEVANT_INDICES);
+				charaDataOverride.ApplyCustomizeData(newCustomizeData);
+				PluginLog.Debug($"Loaded config {string.Join(", ", newCustomizeData)}");
 				return true;
 			}
 			return false;
@@ -56,25 +61,26 @@ namespace Customivisualizer
 
 		private void InitializeDefaults()
 		{
-			if (this.clientState.LocalPlayer == null) return;
-			Array.Copy(this.clientState.LocalPlayer.Customize, NewCustomizeDataInt, RELEVANT_INDICES);
-			Array.Copy(this.clientState.LocalPlayer.Customize, NewCustomizeData, RELEVANT_INDICES);
+			if (clientState.LocalPlayer == null) return;
+			Array.Copy(clientState.LocalPlayer.Customize, newCustomizeDataInt, RELEVANT_INDICES);
+			Array.Copy(clientState.LocalPlayer.Customize, newCustomizeData, RELEVANT_INDICES);
 		}
 
 		private void SaveAppearance()
 		{
-			this.configuration.CustomizationData = new byte[RELEVANT_INDICES];
-			Array.Copy(newCustomizeData, this.configuration.CustomizationData, RELEVANT_INDICES);
-			this.configuration.Save();
-			plugin.UpdateCustomizeData();
+			configuration.CustomizationData = new byte[RELEVANT_INDICES];
+			Array.Copy(newCustomizeData, configuration.CustomizationData, RELEVANT_INDICES);
+			charaDataOverride.ApplyCustomizeData(newCustomizeData);
+			configuration.Save();
+			PluginLog.Debug($"Saved config {string.Join(", ", configuration.CustomizationData)}");
 		}
 
 		private void ResetAppearance()
 		{
-			this.configuration.CustomizationData = null;
-			this.configuration.Save();
+			configuration.CustomizationData = null;
+			configuration.Save();
 			InitializeDefaults();
-			plugin.UpdateCustomizeData();
+			charaDataOverride.ApplyCustomizeData(newCustomizeData);
 		}
 
 		public void Dispose()
@@ -94,16 +100,6 @@ namespace Customivisualizer
             DrawSettingsWindow();
         }
 
-		private void AdjustTribe(int race, ref int tribe)
-		{
-			tribe = race * 2 - tribe % 2;
-		}
-
-		private void AdjustGender(int race, ref int gender)
-		{
-			gender = (Race)race == Race.HROTHGAR ? 0 : gender % 2;
-		}
-
 		public void DrawSettingsWindow()
         {
             if (!SettingsVisible)
@@ -111,42 +107,80 @@ namespace Customivisualizer
                 return;
             }
 
-			bool toggleCustomization = this.configuration.ToggleCustomization;
-			bool alwaysReload = this.configuration.AlwaysReload;
-			bool showCustomize = this.configuration.ShowCustomize;
+			var overrideMode = (int)configuration.OverrideMode;
+			var toggleCustomization = configuration.ToggleCustomization;
+			var alwaysReload = configuration.AlwaysReload;
+			var showCustomize = configuration.ShowCustomize;
 
-            if (ImGui.Begin("Config", ref this.settingsVisible, ImGuiWindowFlags.AlwaysAutoResize))
+            if (ImGui.Begin("Config", ref settingsVisible, ImGuiWindowFlags.AlwaysAutoResize))
             {
-				if (ImGui.Checkbox("Enable custom appearance", ref toggleCustomization))
+				if (ShowInvalidDataWarning)
 				{
-					plugin.UpdateCustomizeData();
+					ImGui.Text($"WARNING: Invalid data detected, change back what you just did, or reset appearance!");
+				}
+
+				if (ImGui.Combo($"Override Mode", ref overrideMode, Enum.GetNames<Configuration.Override>(), 2))
+				{
+					configuration.OverrideMode = (Configuration.Override)overrideMode;
+					configuration.Save();
+					if (configuration.ToggleCustomization) charaDataOverride.ManualInvokeDataChanged();
+				}
+				if (ImGui.IsItemHovered())
+				{
+					ImGui.BeginTooltip();
+					ImGui.SetTooltip($"SOFT: Instant ON/OFF, doesn't work in cutscenes/GPose/equipment view.\nHARD: Requires entering new zone to remove changes, works in cutscenes/GPose/equipment view.");
+					ImGui.EndTooltip();
+				}
+
+				if (ImGui.Checkbox($"Enable custom appearance", ref toggleCustomization))
+				{
+					configuration.ToggleCustomization = toggleCustomization;
+					configuration.Save();
+					charaDataOverride.ManualInvokeDataChanged();
 				};
 
-				this.configuration.ToggleCustomization = toggleCustomization;
-				this.configuration.Save();
+				if (ImGui.Checkbox($"Always update appearance", ref alwaysReload))
+				{
+					if (ImGui.IsItemHovered())
+					{
+						ImGui.BeginTooltip();
+						ImGui.SetTooltip($"Should character be redrawn as soon as you change a value?");
+						ImGui.EndTooltip();
+					}
+					configuration.AlwaysReload = alwaysReload;
+					configuration.Save();
+				}
 
-				ImGui.Checkbox("Always update appearance", ref alwaysReload);
 
-				this.configuration.AlwaysReload = alwaysReload;
-				this.configuration.Save();
-
-				ImGui.Checkbox("Show Customize array", ref showCustomize);
+				if (ImGui.Checkbox($"Show Customize array", ref showCustomize))
+				{
+					configuration.ShowCustomize = showCustomize;
+					configuration.Save();
+				}
 				
-				this.configuration.ShowCustomize = showCustomize;
-				this.configuration.Save();
-
 				ImGui.Spacing();
 
 				if (showCustomize)
 				{
+					ImGui.BeginTable("t0", configuration.OverrideMode == Configuration.Override.HARD ? 2 : 1, ImGuiTableFlags.SizingStretchProp);
+					ImGui.TableNextRow();
+					ImGui.TableNextColumn();
 					DrawCustomizationOptions();
+					if (configuration.OverrideMode == Configuration.Override.HARD)
+					{
+						ImGui.TableNextColumn();
+						DrawExtendedOptions();
+					}
+					ImGui.EndTable();
+					ImGui.Spacing();
+					
 				}
-				if (ImGui.Button("Update Appearance"))
+				if (ImGui.Button($"Update Appearance"))
 				{
 					SaveAppearance();
 				}
 				ImGui.SameLine();
-				if (ImGui.Button("Reset Appearance"))
+				if (ImGui.Button($"Reset Appearance"))
 				{
 					ResetAppearance();
 				}
@@ -157,7 +191,7 @@ namespace Customivisualizer
 
 		private void DrawCustomizationOptions()
 		{
-			var raceAndTribe = plugin.GetRaceAndTribe(NewCustomizeDataInt[(int)CustomizeIndex.Race], NewCustomizeDataInt[(int)CustomizeIndex.Tribe]);
+			var raceAndTribe = uiHelper.GetRaceAndTribe(newCustomizeData);
 
 			ImGui.BeginTable("t1", 3, ImGuiTableFlags.SizingStretchProp);
 			ImGui.TableSetupColumn("c0", ImGuiTableColumnFlags.WidthFixed, 150);
@@ -165,6 +199,14 @@ namespace Customivisualizer
 			ImGui.TableSetupColumn("c2", ImGuiTableColumnFlags.WidthFixed, 150);
 
 			bool performReload = false;
+
+			ImGui.TableNextRow();
+			ImGui.TableNextColumn();
+			ImGui.Text($"Memory values");
+			ImGui.TableNextColumn();
+			ImGui.Text($"Custom values");
+			ImGui.TableNextColumn();
+			ImGui.Text($"Description");
 
 			for (int i = 0; i < RELEVANT_INDICES; i++)
 			{
@@ -178,40 +220,39 @@ namespace Customivisualizer
 				{
 					case CustomizeIndex.Race:
 						ImGui.PushItemWidth(-1);
-						if (ImGui.InputInt($"{i}", ref NewCustomizeDataInt[i]) && this.configuration.AlwaysReload) performReload = true;
+						if (ImGui.InputInt($"{i}", ref newCustomizeDataInt[i]) && configuration.AlwaysReload) performReload = true;
 						ImGui.PopItemWidth();
 						ImGui.TableNextColumn();
 						ImGui.Text($"{raceAndTribe?[0]}");
-						newCustomizeData[i] = (byte)NewCustomizeDataInt[i];
+						newCustomizeData[i] = (byte)newCustomizeDataInt[i];
 						break;
 
 					case CustomizeIndex.Gender:
-						AdjustGender(NewCustomizeDataInt[(int)CustomizeIndex.Race], ref NewCustomizeDataInt[i]);
+						UIHelper.AdjustGender(newCustomizeDataInt[(int)CustomizeIndex.Race], ref newCustomizeDataInt[i]);
 						ImGui.PushItemWidth(-1);
-						if (ImGui.InputInt($"{i}", ref NewCustomizeDataInt[i]) && this.configuration.AlwaysReload) performReload = true;
+						if (ImGui.InputInt($"{i}", ref newCustomizeDataInt[i]) && configuration.AlwaysReload) performReload = true;
 						ImGui.PopItemWidth();
 						ImGui.TableNextColumn();
-						ImGui.Text(NewCustomizeDataInt[i] == 0 ? "Masculine" : "Feminine");
-						newCustomizeData[i] = (byte)NewCustomizeDataInt[i];
-						newCustomizeData[i] = (byte)NewCustomizeDataInt[i];
+						ImGui.Text(newCustomizeDataInt[i] == 0 ? "Masculine" : "Feminine");
+						newCustomizeData[i] = (byte)newCustomizeDataInt[i];
 						break;
 
 					case CustomizeIndex.Tribe:
-						AdjustTribe(NewCustomizeDataInt[(int)CustomizeIndex.Race], ref NewCustomizeDataInt[i]);
+						UIHelper.AdjustTribe(newCustomizeDataInt[(int)CustomizeIndex.Race], ref newCustomizeDataInt[i]);
 						ImGui.PushItemWidth(-1);
-						if (ImGui.InputInt($"{i}", ref NewCustomizeDataInt[i]) && this.configuration.AlwaysReload) performReload = true;
+						if (ImGui.InputInt($"{i}", ref newCustomizeDataInt[i]) && configuration.AlwaysReload) performReload = true;
 						ImGui.PopItemWidth();
 						ImGui.TableNextColumn();
 						ImGui.TableSetupColumn("c2", ImGuiTableColumnFlags.WidthFixed, 300);
 						ImGui.Text($"{raceAndTribe?[1]}");
-						newCustomizeData[i] = (byte)NewCustomizeDataInt[i];
+						newCustomizeData[i] = (byte)newCustomizeDataInt[i];
 						break;
 
 					default:
 						ImGui.PushItemWidth(-1);
-						if (ImGui.InputInt($"{i}", ref NewCustomizeDataInt[i]) && this.configuration.AlwaysReload) performReload = true;
+						if (ImGui.InputInt($"{i}", ref newCustomizeDataInt[i]) && configuration.AlwaysReload) performReload = true;
 						ImGui.PopItemWidth();
-						newCustomizeData[i] = (byte)NewCustomizeDataInt[i];
+						newCustomizeData[i] = (byte)newCustomizeDataInt[i];
 						break;
 				}
 			}
@@ -222,7 +263,11 @@ namespace Customivisualizer
 			}
 
 			ImGui.EndTable();
-			ImGui.Spacing();
+		}
+
+		private void DrawExtendedOptions()
+		{
+			ImGui.Text("This section is a work in progress");
 		}
     }
 }

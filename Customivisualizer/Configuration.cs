@@ -7,6 +7,12 @@ namespace Customivisualizer
     [Serializable]
     public class Configuration : IPluginConfiguration
     {
+		public enum Override
+		{
+			SOFT,
+			HARD
+		}
+
         public int Version { get; set; } = 0;
 
         public bool ShowCustomize { get; set; }
@@ -14,6 +20,8 @@ namespace Customivisualizer
 		public bool ToggleCustomization { get; set; }
 
 		public bool AlwaysReload { get; set; }
+
+		public Override OverrideMode { get; set; }
 
 		public byte[]? CustomizationData { get; set; }
 
