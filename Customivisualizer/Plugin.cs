@@ -185,7 +185,7 @@ namespace Customivisualizer
 				case "reload":
 					ReloadPlayer();
 					break;
-				case "p":
+				case "e":
 					PrintEquipSlotData();
 					break;
 				case "l":
@@ -193,6 +193,10 @@ namespace Customivisualizer
 					break;
 				case "l2":
 					OnLookup2();
+					break;
+				case "t":
+					this.Configuration.ShowEquipSlot = !this.Configuration.ShowEquipSlot;
+					this.Configuration.Save();
 					break;
 				case "hex":
 					PluginLog.Log($"0x{int.Parse(allArgs[1]):X}");
@@ -204,7 +208,7 @@ namespace Customivisualizer
 					PluginLog.Log($"{PROC_BASE_ADDR?.ToInt64():X}");
 					break;
 				default:
-					PluginLog.Log($"No such command: \"{args}\"");
+					PluginLog.Log($"No such argument: \"{args}\"");
 					break;
 			}
 		}
@@ -214,10 +218,17 @@ namespace Customivisualizer
 			DrawConfigUI();
 		}
 
-		private void OnTestCommand()
+		private void DrawUI()
 		{
-			PrintEquipSlotData();
+			this.PluginUi.Draw();
 		}
+
+		private void DrawConfigUI()
+		{
+			this.PluginUi.SettingsVisible = true;
+		}
+
+		#region Debug
 
 		private unsafe void PrintEquipSlotData()
 		{
@@ -263,15 +274,8 @@ namespace Customivisualizer
 			PluginLog.Log($"{r?.ModelSub}");
 		}
 
-		private void DrawUI()
-        {
-            this.PluginUi.Draw();
-        }
-
-        private void DrawConfigUI()
-        {
-            this.PluginUi.SettingsVisible = true;
-        }
+		#endregion
+		#region Character initialization
 
 		private unsafe IntPtr InitializeCharacterDetour(IntPtr drawObjectPtr, IntPtr customizeDataPtr)
 		{
@@ -287,13 +291,6 @@ namespace Customivisualizer
 			if (this.ClientState.LocalPlayer == null) return IntPtr.Zero;
 			var battleChara = (FFXIVClientStructs.FFXIV.Client.Game.Character.BattleChara*)(void*)this.ClientState.LocalPlayer.Address;
 			return (IntPtr)battleChara->Character.GameObject.DrawObject;
-		}
-
-		private bool InCutscene()
-		{
-			return Condition[ConditionFlag.OccupiedInCutSceneEvent] ||
-					   Condition[ConditionFlag.WatchingCutscene] ||
-					   Condition[ConditionFlag.WatchingCutscene78];
 		}
 
 		private IntPtr SoftOverride(IntPtr drawObjectPtr, IntPtr customizeDataPtr)
@@ -312,6 +309,17 @@ namespace Customivisualizer
 				return initializeCharacterHook.Original(drawObjectPtr, customizeDataPtr); ;
 			}
 			else return initializeCharacterHook.Original(drawObjectPtr, customizeDataPtr);
+		}
+
+		#endregion
+
+		#region Character flags
+
+		private bool InCutscene()
+		{
+			return Condition[ConditionFlag.OccupiedInCutSceneEvent] ||
+					   Condition[ConditionFlag.WatchingCutscene] ||
+					   Condition[ConditionFlag.WatchingCutscene78];
 		}
 
 		private async void OnOnlineStatusChanged()
@@ -338,6 +346,9 @@ namespace Customivisualizer
 			return setCharacterFlagHook.Original(ptr, flag, actorPtr);
 		}
 
+		#endregion
+		#region Character loading
+
 		private IntPtr LoadCharacterDetour(IntPtr actorPtr, IntPtr v2, IntPtr customizeDataPtr, IntPtr equipSlotDataPtr, IntPtr baseAddress)
 		{
 			var player = this.ClientState.LocalPlayer;
@@ -361,15 +372,6 @@ namespace Customivisualizer
 			return loadCharacterHook.Original(actorPtr, v2, customizeDataPtr, equipSlotDataPtr, baseAddress);
 		}
 
-		private bool IsRedrawing()
-		{
-			var actor = this.ClientState.LocalPlayer;
-			if (actor == null) return false;
-			var addrRenderToggle = actor.Address + OFFSET_RENDER_TOGGLE;
-			var val = Marshal.ReadInt32(addrRenderToggle);
-			return (val & (int)FLAG_INVIS) == FLAG_INVIS;
-		}
-
 		private void ReloadPlayer()
 		{
 			var actor = this.ClientState.LocalPlayer;
@@ -385,6 +387,19 @@ namespace Customivisualizer
 
 			cHandle.Free();
 			eHandle.Free();
+		}
+
+		#endregion
+
+		#region Character rendering
+
+		private bool IsRedrawing()
+		{
+			var actor = this.ClientState.LocalPlayer;
+			if (actor == null) return false;
+			var addrRenderToggle = actor.Address + OFFSET_RENDER_TOGGLE;
+			var val = Marshal.ReadInt32(addrRenderToggle);
+			return (val & (int)FLAG_INVIS) == FLAG_INVIS;
 		}
 
 		private async void RedrawPlayer()
@@ -408,5 +423,7 @@ namespace Customivisualizer
 				PluginLog.LogError(ex.ToString());
 			}
 		}
+
+		#endregion
 	}
 }

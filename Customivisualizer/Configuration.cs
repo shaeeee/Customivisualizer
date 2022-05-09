@@ -18,6 +18,8 @@ namespace Customivisualizer
 
         public bool ShowCustomize { get; set; }
 
+		public bool ShowEquipSlot { get; set; }
+
 		public bool ToggleCustomization { get; set; }
 
 		public bool AlwaysReload { get; set; }

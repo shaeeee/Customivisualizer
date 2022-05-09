@@ -159,7 +159,7 @@ namespace Customivisualizer
 			var alwaysReload = configuration.AlwaysReload;
 			var showCustomize = configuration.ShowCustomize;
 
-            if (ImGui.Begin("Config", ref settingsVisible, ImGuiWindowFlags.AlwaysAutoResize))
+            if (ImGui.Begin("Customivisualizer Config", ref settingsVisible, ImGuiWindowFlags.AlwaysAutoResize))
             {
 				if (ImGui.Combo($"Override Mode", ref overrideMode, Enum.GetNames<Configuration.Override>(), 3))
 				{
@@ -196,7 +196,7 @@ namespace Customivisualizer
 					configuration.Save();
 				}
 
-				if (ImGui.Checkbox($"Show Customize array", ref showCustomize))
+				if (ImGui.Checkbox($"Show data editor", ref showCustomize))
 				{
 					configuration.ShowCustomize = showCustomize;
 					configuration.Save();
@@ -207,7 +207,7 @@ namespace Customivisualizer
 
 				if (showCustomize)
 				{	
-					bool showEquipSlots = configuration.OverrideMode == Configuration.Override.HOOK_LOAD || configuration.OverrideMode == Configuration.Override.MEM_EDIT;
+					bool showEquipSlots = this.configuration.ShowEquipSlot && (this.configuration.OverrideMode == Configuration.Override.HOOK_LOAD || configuration.OverrideMode == Configuration.Override.MEM_EDIT);
 					ImGui.BeginTable("t0", showEquipSlots ? 2 : 1, ImGuiTableFlags.SizingStretchProp);
 
 					ImGui.TableNextRow();
