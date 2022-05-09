@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Authors>Shae</Authors>
     <Company></Company>
-    <Version>0.1.0.0</Version>
+    <Version>0.1.1.0</Version>
     <Description>Allows clientsided previewing and modification of player appearance data.</Description>
     <Copyright></Copyright>
     <PackageProjectUrl>https://github.com/shaeeee/Customivisualizer</PackageProjectUrl>
@@ -18,6 +18,10 @@
     <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Overriderx.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <None Remove="Customivisualizer.json" />
