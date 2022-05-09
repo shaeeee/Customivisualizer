@@ -9,8 +9,9 @@ namespace Customivisualizer
     {
 		public enum Override
 		{
-			SOFT,
-			HARD
+			MEM_EDIT,
+			CLASSIC,
+			HOOK_LOAD
 		}
 
         public int Version { get; set; } = 0;
@@ -24,6 +25,8 @@ namespace Customivisualizer
 		public Override OverrideMode { get; set; }
 
 		public byte[]? CustomizationData { get; set; }
+
+		public byte[]? EquipSlotData { get; set; }
 
         // the below exist just to make saving less cumbersome
 

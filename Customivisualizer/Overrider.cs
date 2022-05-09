@@ -8,15 +8,17 @@ namespace Customivisualizer
 {
 	public class Overrider : IDisposable
 	{
-		public const int CUSTOMIZE_OFFSET = 0x830;
+		private const int CUSTOMIZE_OFFSET = 0x830;
+		private const int EQUIPSLOT_OFFSET = 0x808;
 
 		private Framework framework;
 		private ClientState clientState;
-		private CharaDataOverride charaDataOverride;
+		private CharaCustomizeOverride charaDataOverride;
+		//private CharaEquipSlotOverride charaEquipSlotOverride;
 
 		public bool Enabled { get; private set; }
 
-		internal Overrider(Framework framework, ClientState clientState, CharaDataOverride charaDataOverride)
+		internal Overrider(Framework framework, ClientState clientState, CharaCustomizeOverride charaDataOverride)
 		{
 			this.framework = framework;
 			this.clientState = clientState;
@@ -50,10 +52,19 @@ namespace Customivisualizer
 			Override(null);
 		}
 
+		public void ApplyOriginal()
+		{
+			if (clientState.LocalPlayer == null) return;
+			PluginLog.LogDebug("Applied original");
+			Marshal.StructureToPtr(charaDataOverride.OriginalData, clientState.LocalPlayer.Address + CUSTOMIZE_OFFSET, false);
+			//Marshal.StructureToPtr(charaEquipSlotOverride.OriginalData, clientState.LocalPlayer.Address + EQUIPSLOT_OFFSET, false);
+		}
+
 		private unsafe void Override(Framework? framework = null)
 		{
 			if (clientState.LocalPlayer == null) return;
-			Marshal.StructureToPtr(charaDataOverride.CustomizeData, clientState.LocalPlayer.Address + CUSTOMIZE_OFFSET, false);
+			Marshal.StructureToPtr(charaDataOverride.CustomData, clientState.LocalPlayer.Address + CUSTOMIZE_OFFSET, false);
+			//Marshal.StructureToPtr(charaEquipSlotOverride.CustomData, clientState.LocalPlayer.Address + EQUIPSLOT_OFFSET, false);
 		}
 	}
 }

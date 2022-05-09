@@ -10,50 +10,84 @@ namespace Customivisualizer
     // to do any cleanup
     class PluginUI : IDisposable
     {
-		// Customize array is 28 long, but the last 2 are not indexed by CustomizeIndex and thus not used here
-		private const int RELEVANT_INDICES = 26;
-
-        private Configuration configuration;
-		private UIHelper uiHelper;
-		private ClientState clientState;
-		private CharaDataOverride charaDataOverride;
-
         private bool settingsVisible = false;
         public bool SettingsVisible
         {
             get { return settingsVisible; }
-            set { settingsVisible = value; }
+            set {
+				if (!settingsVisible && value) InitializeData();
+				settingsVisible = value;
+			}
         }
 
-		private int[] newCustomizeDataInt = new int[RELEVANT_INDICES];
+        private readonly Configuration configuration;
+		private readonly UIHelper uiHelper;
+		private readonly ClientState clientState;
+		private readonly CharaCustomizeOverride charaCustomizeOverride;
+		private readonly CharaEquipSlotOverride charaEquipSlotOverride;
+		
+		private int[] newCustomizeDataInt;
+		private int[] newEquipSlotDataInt;
 
-		private byte[] newCustomizeData = new byte[26];
+		private byte[] newCustomizeData;
+		private byte[] newEquipSlotData;
 
-		public bool ShowInvalidDataWarning { get; set; }
+		private Dalamud.Game.ClientState.Objects.SubKinds.PlayerCharacter? player;
 
-		public PluginUI(Configuration configuration, UIHelper uiHelper, ClientState clientState, CharaDataOverride charaDataOverride)
+		public PluginUI(
+			Configuration configuration,
+			UIHelper uiHelper,
+			ClientState clientState,
+			CharaCustomizeOverride charaDataOverride,
+			CharaEquipSlotOverride charaEquipSlotOverride)
         {
             this.configuration = configuration;
 			this.uiHelper = uiHelper;
 			this.clientState = clientState;
-			this.charaDataOverride = charaDataOverride;
+			this.charaCustomizeOverride = charaDataOverride;
+			this.charaEquipSlotOverride = charaEquipSlotOverride;
+
+			newCustomizeDataInt = new int[CharaCustomizeOverride.SIZE];
+			newEquipSlotDataInt = new int[CharaEquipSlotOverride.SIZE];
+
+			newCustomizeData = new byte[CharaCustomizeOverride.SIZE];
+			newEquipSlotData = new byte[CharaEquipSlotOverride.SIZE];
 
 			// Init custom appearance values
-			if (!InitializeSaved())
-			{
-				InitializeDefaults();
-			}
+			InitializeData();
 			charaDataOverride.ManualInvokeDataChanged();
 		}
 
-		private bool InitializeSaved()
+		private void UpdatePlayer()
+		{
+			player = clientState.LocalPlayer;
+		}
+
+		private void InitializeData()
+		{
+			if (!InitializeCustomizeData()) InitializeCustomizeDefaults();
+			if (!InitializeEquipSlotData()) InitializeEquipSlotDefaults();
+		}
+
+		private bool InitializeCustomizeData()
 		{
 			if (configuration.CustomizationData != null)
 			{
-				Array.Copy(configuration.CustomizationData, newCustomizeDataInt, RELEVANT_INDICES);
-				Array.Copy(configuration.CustomizationData, newCustomizeData, RELEVANT_INDICES);
-				charaDataOverride.ApplyCustomizeData(newCustomizeData);
-				PluginLog.Debug($"Loaded config {string.Join(", ", newCustomizeData)}");
+				Array.Copy(configuration.CustomizationData, newCustomizeDataInt, CharaCustomizeOverride.SIZE);
+				Array.Copy(configuration.CustomizationData, newCustomizeData, CharaCustomizeOverride.SIZE);
+				charaCustomizeOverride.Apply(newCustomizeData);
+				return true;
+			}
+			return false;
+		}
+
+		private bool InitializeEquipSlotData()
+		{
+			if (configuration.EquipSlotData != null)
+			{
+				Array.Copy(configuration.EquipSlotData, newEquipSlotDataInt, CharaEquipSlotOverride.SIZE);
+				Array.Copy(configuration.EquipSlotData, newEquipSlotData, CharaEquipSlotOverride.SIZE);
+				charaEquipSlotOverride.Apply(newEquipSlotData);
 				return true;
 			}
 			return false;
@@ -61,18 +95,31 @@ namespace Customivisualizer
 
 		private void InitializeDefaults()
 		{
-			if (clientState.LocalPlayer == null) return;
-			Array.Copy(clientState.LocalPlayer.Customize, newCustomizeDataInt, RELEVANT_INDICES);
-			Array.Copy(clientState.LocalPlayer.Customize, newCustomizeData, RELEVANT_INDICES);
+			InitializeCustomizeDefaults();
+			InitializeEquipSlotDefaults();
+		}
+
+		private void InitializeCustomizeDefaults()
+		{
+			var player = clientState.LocalPlayer;
+			if (player == null) return;
+			Array.Copy(player.Customize, newCustomizeDataInt, CharaCustomizeOverride.SIZE);
+			Array.Copy(player.Customize, newCustomizeData, CharaCustomizeOverride.SIZE);
+		}
+
+		private void InitializeEquipSlotDefaults()
+		{
+			var player = clientState.LocalPlayer;
+			Array.Copy(uiHelper.GetEquipSlotValues(player), newEquipSlotDataInt, CharaEquipSlotOverride.SIZE);
+			Array.Copy(uiHelper.GetEquipSlotValues(player), newEquipSlotData, CharaEquipSlotOverride.SIZE);
 		}
 
 		private void SaveAppearance()
 		{
-			configuration.CustomizationData = new byte[RELEVANT_INDICES];
-			Array.Copy(newCustomizeData, configuration.CustomizationData, RELEVANT_INDICES);
-			charaDataOverride.ApplyCustomizeData(newCustomizeData);
+			configuration.CustomizationData = new byte[CharaCustomizeOverride.SIZE];
+			Array.Copy(newCustomizeData, configuration.CustomizationData, CharaCustomizeOverride.SIZE);
+			charaCustomizeOverride.Apply(newCustomizeData);
 			configuration.Save();
-			PluginLog.Debug($"Saved config {string.Join(", ", configuration.CustomizationData)}");
 		}
 
 		private void ResetAppearance()
@@ -80,7 +127,7 @@ namespace Customivisualizer
 			configuration.CustomizationData = null;
 			configuration.Save();
 			InitializeDefaults();
-			charaDataOverride.ApplyCustomizeData(newCustomizeData);
+			charaCustomizeOverride.Apply(newCustomizeData);
 		}
 
 		public void Dispose()
@@ -90,13 +137,13 @@ namespace Customivisualizer
 
         public void Draw()
         {
-            // This is our only draw handler attached to UIBuilder, so it needs to be
-            // able to draw any windows we might have open.
-            // Each method checks its own visibility/state to ensure it only draws when
-            // it actually makes sense.
-            // There are other ways to do this, but it is generally best to keep the number of
-            // draw delegates as low as possible.
-
+			// This is our only draw handler attached to UIBuilder, so it needs to be
+			// able to draw any windows we might have open.
+			// Each method checks its own visibility/state to ensure it only draws when
+			// it actually makes sense.
+			// There are other ways to do this, but it is generally best to keep the number of
+			// draw delegates as low as possible.
+			UpdatePlayer();
             DrawSettingsWindow();
         }
 
@@ -114,21 +161,19 @@ namespace Customivisualizer
 
             if (ImGui.Begin("Config", ref settingsVisible, ImGuiWindowFlags.AlwaysAutoResize))
             {
-				if (ShowInvalidDataWarning)
-				{
-					ImGui.Text($"WARNING: Invalid data detected, change back what you just did, or reset appearance!");
-				}
-
-				if (ImGui.Combo($"Override Mode", ref overrideMode, Enum.GetNames<Configuration.Override>(), 2))
+				if (ImGui.Combo($"Override Mode", ref overrideMode, Enum.GetNames<Configuration.Override>(), 3))
 				{
 					configuration.OverrideMode = (Configuration.Override)overrideMode;
 					configuration.Save();
-					if (configuration.ToggleCustomization) charaDataOverride.ManualInvokeDataChanged();
+					if (configuration.ToggleCustomization) charaCustomizeOverride.ManualInvokeDataChanged();
 				}
 				if (ImGui.IsItemHovered())
 				{
 					ImGui.BeginTooltip();
-					ImGui.SetTooltip($"SOFT: Instant ON/OFF, doesn't work in cutscenes/GPose/equipment view.\nHARD: Requires entering new zone to remove changes, works in cutscenes/GPose/equipment view.");
+					ImGui.SetTooltip($"" +
+						$"MEM_EDIT: Instant ON/OFF. May break with game updates.\n" +
+						$"CLASSIC: Instant ON/OFF. Doesn't work in cutscenes/GPose/equipment view. Least likely to break with game updates.\n" +
+						$"HOOK_LOAD: Requires entering new zone to reflect changes. Less likely to break with game updates.");
 					ImGui.EndTooltip();
 				}
 
@@ -136,7 +181,7 @@ namespace Customivisualizer
 				{
 					configuration.ToggleCustomization = toggleCustomization;
 					configuration.Save();
-					charaDataOverride.ManualInvokeDataChanged();
+					charaCustomizeOverride.ManualInvokeDataChanged();
 				};
 
 				if (ImGui.Checkbox($"Always update appearance", ref alwaysReload))
@@ -151,7 +196,6 @@ namespace Customivisualizer
 					configuration.Save();
 				}
 
-
 				if (ImGui.Checkbox($"Show Customize array", ref showCustomize))
 				{
 					configuration.ShowCustomize = showCustomize;
@@ -159,21 +203,37 @@ namespace Customivisualizer
 				}
 				
 				ImGui.Spacing();
+				ImGui.Spacing();
 
 				if (showCustomize)
-				{
-					ImGui.BeginTable("t0", configuration.OverrideMode == Configuration.Override.HARD ? 2 : 1, ImGuiTableFlags.SizingStretchProp);
+				{	
+					bool showEquipSlots = configuration.OverrideMode == Configuration.Override.HOOK_LOAD || configuration.OverrideMode == Configuration.Override.MEM_EDIT;
+					ImGui.BeginTable("t0", showEquipSlots ? 2 : 1, ImGuiTableFlags.SizingStretchProp);
+
 					ImGui.TableNextRow();
 					ImGui.TableNextColumn();
-					DrawCustomizationOptions();
-					if (configuration.OverrideMode == Configuration.Override.HARD)
+					ImGui.Text($"[Appearance Data]");
+
+					if (showEquipSlots)
 					{
 						ImGui.TableNextColumn();
-						DrawExtendedOptions();
+						ImGui.Text($"[Equip Slot Data] (WORK IN PROGRESS)");
 					}
+
+					ImGui.Spacing();
+					ImGui.TableNextRow();
+					ImGui.TableSetColumnIndex(0);
+					
+					DrawCustomizeOptions();
+					
+					if (showEquipSlots)
+					{
+						ImGui.TableNextColumn();
+						DrawEquipSlotOptions();
+					}
+					
 					ImGui.EndTable();
 					ImGui.Spacing();
-					
 				}
 				if (ImGui.Button($"Update Appearance"))
 				{
@@ -189,7 +249,7 @@ namespace Customivisualizer
 			ImGui.End();
         }
 
-		private void DrawCustomizationOptions()
+		private void DrawCustomizeOptions()
 		{
 			var raceAndTribe = uiHelper.GetRaceAndTribe(newCustomizeData);
 
@@ -208,11 +268,11 @@ namespace Customivisualizer
 			ImGui.TableNextColumn();
 			ImGui.Text($"Description");
 
-			for (int i = 0; i < RELEVANT_INDICES; i++)
+			for (int i = 0; i < CharaCustomizeOverride.SIZE; i++)
 			{
 				ImGui.TableNextRow();
 				ImGui.TableNextColumn();
-				ImGui.Text($"{Enum.GetName(typeof(CustomizeIndex), i) ?? "Unknown"} = {clientState?.LocalPlayer?.Customize[i]}");
+				ImGui.Text($"{Enum.GetName(typeof(CustomizeIndex), i) ?? "Unknown"} = {player?.Customize[i]}");
 				ImGui.SameLine();
 				ImGui.TableNextColumn();
 				// For special cases
@@ -265,9 +325,44 @@ namespace Customivisualizer
 			ImGui.EndTable();
 		}
 
-		private void DrawExtendedOptions()
+		private void DrawEquipSlotOptions()
 		{
-			ImGui.Text("This section is a work in progress");
+			ImGui.BeginTable("t2", 3, ImGuiTableFlags.SizingStretchProp);
+			ImGui.TableSetupColumn("c3", ImGuiTableColumnFlags.WidthFixed, 100);
+			ImGui.TableSetupColumn("c4", ImGuiTableColumnFlags.WidthFixed, 100);
+			ImGui.TableSetupColumn("c5", ImGuiTableColumnFlags.WidthFixed, 150);
+
+			bool performReload = false;
+
+			ImGui.TableNextRow();
+			ImGui.TableNextColumn();
+			ImGui.Text($"Memory values");
+			ImGui.TableNextColumn();
+			ImGui.Text($"Custom values");
+			ImGui.TableNextColumn();
+			ImGui.Text($"Description");
+
+			byte[] equipSlots = uiHelper.GetEquipSlotValues(player);
+
+			for (int i = 0; i < CharaEquipSlotOverride.SIZE; i++)
+			{
+				ImGui.TableNextRow();
+				ImGui.TableNextColumn();
+				ImGui.Text($"{Enum.GetName(typeof(EquipSlotIndex), i) ?? "Unknown"} = {equipSlots[i]}");
+				ImGui.SameLine();
+				ImGui.TableNextColumn();
+				ImGui.PushItemWidth(-1);
+				if (ImGui.InputInt($"{i}", ref newEquipSlotDataInt[i]) && configuration.AlwaysReload) performReload = true;
+				ImGui.PopItemWidth();
+				newEquipSlotData[i] = (byte)newEquipSlotDataInt[i];
+			}
+
+			if (performReload)
+			{
+				SaveAppearance();
+			}
+
+			ImGui.EndTable();
 		}
     }
 }

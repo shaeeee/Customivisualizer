@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -39,6 +40,15 @@ namespace Customivisualizer
 		private static uint GetCharaTypeIndex(int tribe, int gender)
 		{
 			return (uint)(2u * tribe + gender - 2u);
+		}
+
+		public unsafe byte[] GetEquipSlotValues(Dalamud.Game.ClientState.Objects.SubKinds.PlayerCharacter? player)
+		{
+			if (player == null) return new byte[CharaEquipSlotOverride.SIZE];
+			var bChara = (FFXIVClientStructs.FFXIV.Client.Game.Character.BattleChara*)(void*)player.Address;
+			byte[] bytes = new byte[CharaEquipSlotOverride.SIZE];
+			Marshal.Copy((IntPtr)bChara->Character.EquipSlotData, bytes, 0, CharaEquipSlotOverride.SIZE);
+			return bytes;
 		}
 	}
 }

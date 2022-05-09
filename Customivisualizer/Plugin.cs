@@ -16,15 +16,16 @@ namespace Customivisualizer
 {
 	public sealed class Plugin : IDalamudPlugin
 	{
+		private IntPtr? PROC_BASE_ADDR;
+		
 		private const uint FLAG_INVIS = (1 << 1) | (1 << 11);
 		private const int OFFSET_RENDER_TOGGLE = 0x104;
 		private const int VIEWING_CUTSCENE_STATUS = 15;
 
 		private const string CHARA_INIT_SIG = "48 89 5C 24 ?? 48 89 6C 24 ?? 48 89 74 24 ?? 57 48 83 EC 30 48 8B F9 48 8B EA 48 81 C1 ?? ?? ?? ?? E8 ?? ?? ?? ??";
 		private const string CHARA_FLAG_SIG = "48 8D 81 70 3D 00 00 84 D2 48 0F 45 C8 48 8B C1 C3";
-		
-		//MANUAL SETTER ADDR:	0x7FF6129F72A0
-		//AUTO SETTER ADDR:		0x7FF612F78720
+		private const string CHARA_LOAD_SIG = "48 89 5C 24 10 48 89 6C 24 18 56 57 41 57 48 83 EC 30 48 8B F9 4D 8B F9 8B CA 49 8B D8 8B EA";
+	
 
 		public string Name => "Customivisualizer";
 
@@ -43,16 +44,21 @@ namespace Customivisualizer
         private Configuration Configuration { get; init; }
         private PluginUI PluginUi { get; init; }
 		private UIHelper UIHelper { get; init; }
-		private CharaDataOverride CharaDataOverride { get; init; }
+		private CharaCustomizeOverride CharaCustomizeOverride { get; init; }
+		private CharaEquipSlotOverride CharaEquipSlotOverride { get; init; }
 		private Overrider Overrider { get; init; }
 
-		private delegate IntPtr CharacterInitialize(IntPtr drawObjectPtr, IntPtr customizeDataPtr);
+		private delegate IntPtr InitializeCharacter(IntPtr drawObjectPtr, IntPtr customizeDataPtr);
 		private unsafe delegate IntPtr SetCharacterFlag(IntPtr ptr, char* flag, IntPtr actorPtr);
-		private Hook<CharacterInitialize> charaInitHook;
+		private delegate IntPtr LoadCharacter(IntPtr actorPtr, IntPtr v2, IntPtr customizeDataPtr, IntPtr v4, IntPtr baseOffset);
+		
+		private Hook<InitializeCharacter> initializeCharacterHook;
 		private Hook<SetCharacterFlag> setCharacterFlagHook;
+		private Hook<LoadCharacter> loadCharacterHook;
 
 		private Lumina.Excel.ExcelSheet<Lumina.Excel.GeneratedSheets.CharaMakeType>? charaSheet;
 		private Lumina.Excel.ExcelSheet<Lumina.Excel.GeneratedSheets.OnlineStatus>? statusSheet;
+		private Lumina.Excel.ExcelSheet<Lumina.Excel.GeneratedSheets.Item>? itemSheet;
 
 		private bool inCutscene;
 		private bool outCutsceneRedrawQueued;
@@ -78,30 +84,27 @@ namespace Customivisualizer
 
 			charaSheet = this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.CharaMakeType>();
 			statusSheet = this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.OnlineStatus>();
+			itemSheet = this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.Item>();
 
 			this.Configuration = this.PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
             this.Configuration.Initialize(this.PluginInterface);
 
 			FFXIVClientStructs.Resolver.Initialize();
 
-			var charaInitAddr =	this.SigScanner.ScanText(CHARA_INIT_SIG);
-			PluginLog.LogDebug($"Found Initialize address: {charaInitAddr.ToInt64():X}");
-			this.charaInitHook ??=
-				new Hook<CharacterInitialize>(charaInitAddr, CharacterInitializeDetour);
-			this.charaInitHook.Enable();
+#pragma warning disable CS8601 // Possible null reference assignment.
+			AddHook(CHARA_INIT_SIG, nameof(CHARA_INIT_SIG), InitializeCharacterDetour, ref initializeCharacterHook);
+			AddHook(CHARA_FLAG_SIG, nameof(CHARA_FLAG_SIG), SetCharacterFlagDetour, ref setCharacterFlagHook);
+			AddHook(CHARA_LOAD_SIG, nameof(CHARA_LOAD_SIG), LoadCharacterDetour, ref loadCharacterHook);
+#pragma warning restore CS8601 // Possible null reference assignment.
 
-			var charaFlagAddr = this.SigScanner.ScanText(CHARA_FLAG_SIG);
-			PluginLog.LogDebug($"Found Status address: {charaFlagAddr.ToInt64():X}");
-			this.setCharacterFlagHook ??=
-				new Hook<SetCharacterFlag>(charaFlagAddr, SetCharacterFlagDetour);
-			this.setCharacterFlagHook.Enable();
-
-			this.CharaDataOverride = new();
-			this.CharaDataOverride.DataChanged += OnCharaDataChanged;
+			this.CharaCustomizeOverride = new();
+			this.CharaCustomizeOverride.DataChanged += OnCharaDataChanged;
+			
+			this.CharaEquipSlotOverride = new();
 
 			this.UIHelper = new UIHelper(this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.CharaMakeType>());
-			this.Overrider = new Overrider(this.Framework, clientState, this.CharaDataOverride);
-			this.PluginUi = new PluginUI(this.Configuration, this.UIHelper, this.ClientState, this.CharaDataOverride);
+			this.Overrider = new Overrider(this.Framework, clientState, this.CharaCustomizeOverride);
+			this.PluginUi = new PluginUI(this.Configuration, this.UIHelper, this.ClientState, this.CharaCustomizeOverride, this.CharaEquipSlotOverride);
 
 			this.CommandManager.AddHandler(commandToggle, new CommandInfo(OnToggleCommand)
 			{
@@ -116,61 +119,74 @@ namespace Customivisualizer
 			this.PluginInterface.UiBuilder.OpenConfigUi += DrawConfigUI;
         }
 
-        public void Dispose()
+		private void AddHook<T>(string sig, string name, T detour, ref Hook<T> hook) where T : Delegate
+		{
+			var addr = this.SigScanner.ScanText(sig);
+			PluginLog.LogDebug($"Found {name} address: {addr.ToInt64():X}");
+			hook ??=
+				new Hook<T>(addr, detour);
+			hook.Enable();
+		}
+
+		public void Dispose()
         {
             this.PluginUi.Dispose();
 
 			this.CommandManager.RemoveHandler(commandToggle);
 			this.CommandManager.RemoveHandler(commandConfig);
 
-			this.charaInitHook.Disable();
-			this.charaInitHook.Dispose();
+			this.initializeCharacterHook.Disable();
+			this.initializeCharacterHook.Dispose();
 
 			this.setCharacterFlagHook.Disable();
 			this.setCharacterFlagHook.Dispose();
 
+			this.loadCharacterHook.Disable();
+			this.loadCharacterHook.Dispose();
+
+			OnCharaDataChanged(this, EventArgs.Empty);
+
 			this.Overrider.Dispose();
 
-			this.CharaDataOverride.DataChanged -= OnCharaDataChanged;
-			
-			RedrawPlayer();
+			this.CharaCustomizeOverride.DataChanged -= OnCharaDataChanged;
+
 		}
 
 		private void OnCharaDataChanged(object? sender, EventArgs e)
 		{
-			if (this.Configuration.OverrideMode == Configuration.Override.HARD && this.Configuration.ToggleCustomization && !Overrider.Enabled)
+			if (this.Configuration.OverrideMode == Configuration.Override.MEM_EDIT && this.Configuration.ToggleCustomization && !Overrider.Enabled)
 			{
+				var player = this.ClientState.LocalPlayer;
+				if (player != null) this.CharaCustomizeOverride.SetOriginal(player.Customize);
 				Overrider.Enable();
 			}
-			if ((this.Configuration.OverrideMode == Configuration.Override.SOFT || !this.Configuration.ToggleCustomization) && Overrider.Enabled)
+			if ((this.Configuration.OverrideMode == Configuration.Override.CLASSIC || this.Configuration.OverrideMode == Configuration.Override.HOOK_LOAD || !this.Configuration.ToggleCustomization || sender == this) && Overrider.Enabled)
 			{
+				Overrider.ApplyOriginal();
 				Overrider.Disable();
 			}
 			RedrawPlayer();
 		}
 
-		private void OnToggleCommand(string command, string args)
+		private unsafe void OnToggleCommand(string command, string args)
 		{
 			var allArgs = args.Split(" ");
 			switch (allArgs[0])
 			{
-				default:
+				case "":
 					this.Configuration.ToggleCustomization = !this.Configuration.ToggleCustomization;
 					this.Configuration.Save();
 
 					RedrawPlayer();
 					break;
-				case "oe":
-					this.Overrider.Enable();
-					break;
-				case "od":
-					this.Overrider.Disable();
-					break;
 				case "r":
 					RedrawPlayer();
 					break;
-				case "test":
-					OnTestCommand();
+				case "reload":
+					ReloadPlayer();
+					break;
+				case "p":
+					PrintEquipSlotData();
 					break;
 				case "l":
 					OnLookup();
@@ -179,12 +195,17 @@ namespace Customivisualizer
 					OnLookup2();
 					break;
 				case "hex":
-					ToHex(allArgs[1]);
+					PluginLog.Log($"0x{int.Parse(allArgs[1]):X}");
 					break;
 				case "dec":
-					ToDecimal(allArgs[1]);
+					PluginLog.Log($"{Convert.ToInt32(allArgs[1], 16)}");
 					break;
-
+				case "b":
+					PluginLog.Log($"{PROC_BASE_ADDR?.ToInt64():X}");
+					break;
+				default:
+					PluginLog.Log($"No such command: \"{args}\"");
+					break;
 			}
 		}
 
@@ -193,40 +214,53 @@ namespace Customivisualizer
 			DrawConfigUI();
 		}
 
-		private unsafe void OnTestCommand()
+		private void OnTestCommand()
+		{
+			PrintEquipSlotData();
+		}
+
+		private unsafe void PrintEquipSlotData()
+		{
+			var equipSlots = 10;
+			var size = 4 * equipSlots;
+			if (this.ClientState.LocalPlayer == null) return;
+			var battleChara = (FFXIVClientStructs.FFXIV.Client.Game.Character.BattleChara*)(void*)this.ClientState.LocalPlayer.Address;
+			
+			byte[] bytes = new byte[size];
+			Marshal.Copy((IntPtr)battleChara->Character.EquipSlotData, bytes, 0, size);
+			string output = $"EquipSlotData\n\n";
+			try
+			{
+				for (int i = 0; i < size; i += 4)
+				{
+					output = output.Insert(output.Length - 1, $"Slot {i / 4}: ");
+					for (int j = i; j < i + 4; j++)
+					{
+						output = output.Insert(output.Length - 1, $"{Convert.ToString(bytes[j], 16)}, ");
+						output = output.TrimEnd(',',' ');
+					}
+					output = output.Insert(output.Length - 1, $"\n");
+				}
+				PluginLog.Log(output);
+			}
+			catch (Exception e)
+			{
+				PluginLog.LogError($"{e}");
+			}
+		}
+
+		private unsafe void OnLookup()
 		{
 			if (this.ClientState.LocalPlayer == null) return;
 			var battleChara = (FFXIVClientStructs.FFXIV.Client.Game.Character.BattleChara*)(void*)this.ClientState.LocalPlayer.Address;
-			byte[] bytes = new byte[26];
-			Marshal.Copy((IntPtr)battleChara->Character.EquipSlotData, bytes, 0, 26);
-			PluginLog.Log($"EquipSlotData: {string.Join(", ", bytes)}");
-		}
-
-		private void OnLookup()
-		{
-			var s = this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.EquipSlotCategory>();
-			for (uint i = 0; i < s?.RowCount; i++)
-			{
-				var r = s?.GetRow(i);
-				PluginLog.Log($"{i:00}::SoulCrystal({r?.SoulCrystal:00}), Mainhand({r?.MainHand:00}), Offhand({r?.OffHand:00}), Head({r?.Head:00}), Body({r?.Body:00})");
-			}
+			PluginLog.Log($"PlayerPtr:{((IntPtr)battleChara).ToInt64():X}, CustomizeDataPtr:{((IntPtr)battleChara->Character.CustomizeData).ToInt64():X}, EquipSlotDataPtr:{((IntPtr)battleChara->Character.EquipSlotData).ToInt64():X}, DrawObjectPtr:{GetDrawObjectPtr().ToInt64():X}");
 		}
 
 		private void OnLookup2()
 		{
-			var s = this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.Item>();
+			var s = itemSheet;
 			var r = s?.GetRow(16623);
-			PluginLog.Log($"{r?.Name}");
-		}
-
-		private void ToHex(string value)
-		{
-			PluginLog.Log($"0x{int.Parse(value):X}");
-		}
-
-		private void ToDecimal(string value)
-		{
-			PluginLog.Log($"{Convert.ToInt32(value, 16)}");
+			PluginLog.Log($"{r?.ModelSub}");
 		}
 
 		private void DrawUI()
@@ -239,15 +273,13 @@ namespace Customivisualizer
             this.PluginUi.SettingsVisible = true;
         }
 
-		private unsafe IntPtr CharacterInitializeDetour(IntPtr drawObjectPtr, IntPtr customizeDataPtr)
+		private unsafe IntPtr InitializeCharacterDetour(IntPtr drawObjectPtr, IntPtr customizeDataPtr)
 		{
-			if (this.ClientState.LocalPlayer == null || !this.Configuration.ToggleCustomization) return charaInitHook.Original(drawObjectPtr, customizeDataPtr);
-			return this.Configuration.OverrideMode switch
+			if (this.ClientState.LocalPlayer != null && this.Configuration.ToggleCustomization && this.Configuration.OverrideMode == Configuration.Override.CLASSIC)
 			{
-				Configuration.Override.SOFT => SoftOverride(drawObjectPtr, customizeDataPtr),
-				Configuration.Override.HARD => charaInitHook.Original(drawObjectPtr, customizeDataPtr),
-				_ => charaInitHook.Original(drawObjectPtr, customizeDataPtr),
-			};
+				return SoftOverride(drawObjectPtr, customizeDataPtr);
+			}
+			else return initializeCharacterHook.Original(drawObjectPtr, customizeDataPtr);
 		}
 
 		private unsafe IntPtr GetDrawObjectPtr()
@@ -266,45 +298,20 @@ namespace Customivisualizer
 
 		private IntPtr SoftOverride(IntPtr drawObjectPtr, IntPtr customizeDataPtr)
 		{
-			if (InCutscene()) return charaInitHook.Original(drawObjectPtr, customizeDataPtr);
-
-			var oldCustomizeData = Marshal.PtrToStructure<CharaCustomizeData>(customizeDataPtr);
-
-			// Back up original customize data
-			byte[] origData = new byte[28];
-			Marshal.Copy(customizeDataPtr, origData, 0, 28);
+			if (InCutscene()) return initializeCharacterHook.Original(drawObjectPtr, customizeDataPtr);
 
 			var playerDrawObjectPtr = GetDrawObjectPtr();
 
 			// If the pointer is zero, player is chara being loaded (except in cutscenes/GPose/equipment view)
 			if (playerDrawObjectPtr == IntPtr.Zero)
 			{
-				PluginLog.Log($"CharaInit");
-				this.CharaDataOverride.ChangeCustomizeData(customizeDataPtr);
+				PluginLog.LogDebug($"ActorInit customizeDataPtr:{customizeDataPtr.ToInt64():X}");
+				
+				this.CharaCustomizeOverride.ChangeCustomizeData(customizeDataPtr);
+				
+				return initializeCharacterHook.Original(drawObjectPtr, customizeDataPtr); ;
 			}
-
-			IntPtr result;
-			try
-			{
-				result = charaInitHook.Original(drawObjectPtr, customizeDataPtr);
-				this.PluginUi.ShowInvalidDataWarning = false;
-			}
-			catch (Exception)
-			{
-				// Restore backed up customize data
-				Marshal.Copy(origData, 0, customizeDataPtr, 28);
-				result = charaInitHook.Original(drawObjectPtr, customizeDataPtr);
-				this.PluginUi.ShowInvalidDataWarning = true;
-			}
-
-			return result;
-		}
-
-		private IntPtr HardOverride(IntPtr drawObjectPtr, IntPtr customizeDataPtr)
-		{
-			Overrider.Apply();
-			// CustomizeDataPtr points to a copy of actual CustomizeData, so let SoftOverride take care of the immediate effect
-			return SoftOverride(drawObjectPtr, customizeDataPtr);
+			else return initializeCharacterHook.Original(drawObjectPtr, customizeDataPtr);
 		}
 
 		private async void OnOnlineStatusChanged()
@@ -329,6 +336,55 @@ namespace Customivisualizer
 			}
 			OnOnlineStatusChanged();
 			return setCharacterFlagHook.Original(ptr, flag, actorPtr);
+		}
+
+		private IntPtr LoadCharacterDetour(IntPtr actorPtr, IntPtr v2, IntPtr customizeDataPtr, IntPtr equipSlotDataPtr, IntPtr baseAddress)
+		{
+			var player = this.ClientState.LocalPlayer;
+			if (player != null && actorPtr == player.Address)
+			{
+				PluginLog.LogDebug($"LoadActor actorPtr:{actorPtr.ToInt64():X}, v2:{v2.ToInt64():X3}, customizeDataPtr:{customizeDataPtr.ToInt64():X11}, equipSlotDataPtr:{equipSlotDataPtr.ToInt64():X11}, baseAddress:{baseAddress.ToInt64():X}");
+
+				if (this.Configuration.ToggleCustomization)
+				{
+					if (!PROC_BASE_ADDR.HasValue) PROC_BASE_ADDR = baseAddress;
+
+					this.CharaCustomizeOverride.SetOriginal(Override.PtrToByteArray(customizeDataPtr, CharaCustomizeOverride.SIZE));
+
+					if (this.Configuration.OverrideMode == Configuration.Override.HOOK_LOAD)
+					{
+						this.CharaCustomizeOverride.ChangeCustomizeData(customizeDataPtr);
+					}
+					return loadCharacterHook.Original(actorPtr, v2, customizeDataPtr, equipSlotDataPtr, baseAddress);
+				}
+			}
+			return loadCharacterHook.Original(actorPtr, v2, customizeDataPtr, equipSlotDataPtr, baseAddress);
+		}
+
+		private bool IsRedrawing()
+		{
+			var actor = this.ClientState.LocalPlayer;
+			if (actor == null) return false;
+			var addrRenderToggle = actor.Address + OFFSET_RENDER_TOGGLE;
+			var val = Marshal.ReadInt32(addrRenderToggle);
+			return (val & (int)FLAG_INVIS) == FLAG_INVIS;
+		}
+
+		private void ReloadPlayer()
+		{
+			var actor = this.ClientState.LocalPlayer;
+			if (actor == null || !PROC_BASE_ADDR.HasValue) return;
+
+			var cHandle = GCHandle.Alloc(this.CharaCustomizeOverride.OriginalData, GCHandleType.Pinned);
+			var eHandle = GCHandle.Alloc(this.CharaEquipSlotOverride.OriginalData, GCHandleType.Pinned);
+
+			Marshal.StructureToPtr(this.CharaCustomizeOverride.OriginalData, cHandle.AddrOfPinnedObject(), false);
+			Marshal.StructureToPtr(this.CharaCustomizeOverride.OriginalData, eHandle.AddrOfPinnedObject(), false);
+
+			loadCharacterHook.Original(actor.Address, IntPtr.Zero, cHandle.AddrOfPinnedObject(), eHandle.AddrOfPinnedObject(), PROC_BASE_ADDR.Value);
+
+			cHandle.Free();
+			eHandle.Free();
 		}
 
 		private async void RedrawPlayer()
