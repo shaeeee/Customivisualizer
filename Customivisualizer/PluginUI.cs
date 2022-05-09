@@ -173,7 +173,8 @@ namespace Customivisualizer
 					ImGui.SetTooltip($"" +
 						$"MEM_EDIT: Instant ON/OFF. May break with game updates.\n" +
 						$"CLASSIC: Instant ON/OFF. Doesn't work in cutscenes/GPose/equipment view. Least likely to break with game updates.\n" +
-						$"HOOK_LOAD: Requires entering new zone to reflect changes. Less likely to break with game updates.");
+						$"HOOK_LOAD: Requires entering new zone to reflect changes. Less likely to break with game updates.\n" +
+						$"If you dont know which to pick, use MEM_EDIT.");
 					ImGui.EndTooltip();
 				}
 
@@ -209,7 +210,7 @@ namespace Customivisualizer
 				{	
 					bool showEquipSlots = this.configuration.ShowEquipSlot && (this.configuration.OverrideMode == Configuration.Override.HOOK_LOAD || configuration.OverrideMode == Configuration.Override.MEM_EDIT);
 					ImGui.BeginTable("t0", showEquipSlots ? 2 : 1, ImGuiTableFlags.SizingStretchProp);
-
+					ImGui.TableSetupColumn("c01", ImGuiTableColumnFlags.WidthFixed, 400);
 					ImGui.TableNextRow();
 					ImGui.TableNextColumn();
 					ImGui.Text($"[Appearance Data]");

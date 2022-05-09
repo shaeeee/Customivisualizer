@@ -25,7 +25,6 @@ namespace Customivisualizer
 		private const string CHARA_INIT_SIG = "48 89 5C 24 ?? 48 89 6C 24 ?? 48 89 74 24 ?? 57 48 83 EC 30 48 8B F9 48 8B EA 48 81 C1 ?? ?? ?? ?? E8 ?? ?? ?? ??";
 		private const string CHARA_FLAG_SIG = "48 8D 81 70 3D 00 00 84 D2 48 0F 45 C8 48 8B C1 C3";
 		private const string CHARA_LOAD_SIG = "48 89 5C 24 10 48 89 6C 24 18 56 57 41 57 48 83 EC 30 48 8B F9 4D 8B F9 8B CA 49 8B D8 8B EA";
-	
 
 		public string Name => "Customivisualizer";
 
@@ -312,7 +311,6 @@ namespace Customivisualizer
 		}
 
 		#endregion
-
 		#region Character flags
 
 		private bool InCutscene()
@@ -349,6 +347,7 @@ namespace Customivisualizer
 		#endregion
 		#region Character loading
 
+		// Back up original character data every time character is loaded, and if using HOOK_LOAD also replace data.
 		private IntPtr LoadCharacterDetour(IntPtr actorPtr, IntPtr v2, IntPtr customizeDataPtr, IntPtr equipSlotDataPtr, IntPtr baseAddress)
 		{
 			var player = this.ClientState.LocalPlayer;
@@ -372,6 +371,7 @@ namespace Customivisualizer
 			return loadCharacterHook.Original(actorPtr, v2, customizeDataPtr, equipSlotDataPtr, baseAddress);
 		}
 
+		// This will not crash the game, but the player won't get reloaded properly either, TODO look at hooking higher level function
 		private void ReloadPlayer()
 		{
 			var actor = this.ClientState.LocalPlayer;
@@ -390,7 +390,6 @@ namespace Customivisualizer
 		}
 
 		#endregion
-
 		#region Character rendering
 
 		private bool IsRedrawing()
