@@ -1,4 +1,4 @@
-# Customivisualizer
+![image](./Resources/forgmd.png)
 
 __Be advised:__ Not only is this my first Dalamud plugin, its in a very early stage of development so there may be bugs. If you encounter one, feel free to open a new issue.
 
