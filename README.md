@@ -7,7 +7,7 @@ Well, now you can.
 
 This plugin allows modification of player character appearance data, sort of like how Anamnesis lets you change that stuff.
 
-__Note:__ This plugin is not intead as a way to never buy a fantasia again, its just a more in depth "try before you buy". Please support the FFXIV developers!
+__Note:__ This plugin is not intended as a way to never buy a fantasia again, its just a more in depth "try before you buy". Please support the FFXIV developers!
 
 * The game crashed when I changed a customization field value, what do?
   * You probably entered a value the game could not handle. Access the Dalamud plugin menu from the FFXIV main menu, and change the value back before logging in.
