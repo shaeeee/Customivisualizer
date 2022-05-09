@@ -176,7 +176,7 @@ namespace Customivisualizer
 					this.Configuration.ToggleCustomization = !this.Configuration.ToggleCustomization;
 					this.Configuration.Save();
 
-					RedrawPlayer();
+					this.CharaCustomizeOverride.ManualInvokeDataChanged();
 					break;
 				case "r":
 					RedrawPlayer();
