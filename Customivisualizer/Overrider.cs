@@ -8,21 +8,21 @@ namespace Customivisualizer
 {
 	public class Overrider : IDisposable
 	{
-		private const int CUSTOMIZE_OFFSET = 0x830;
-		private const int EQUIPSLOT_OFFSET = 0x808;
-
 		private Framework framework;
 		private ClientState clientState;
-		private CharaCustomizeOverride charaDataOverride;
-		//private CharaEquipSlotOverride charaEquipSlotOverride;
+		private Configuration configuration;
+		private CharaCustomizeOverride charaCustomizeOverride;
+		private CharaEquipSlotOverride charaEquipSlotOverride;
 
 		public bool Enabled { get; private set; }
 
-		internal Overrider(Framework framework, ClientState clientState, CharaCustomizeOverride charaDataOverride)
+		internal Overrider(Framework framework, ClientState clientState, Configuration configuration, CharaCustomizeOverride charaDataOverride, CharaEquipSlotOverride charaEquipSlotOverride)
 		{
 			this.framework = framework;
 			this.clientState = clientState;
-			this.charaDataOverride = charaDataOverride;
+			this.configuration = configuration;
+			this.charaCustomizeOverride = charaDataOverride;
+			this.charaEquipSlotOverride = charaEquipSlotOverride;
 		}
 
 		public void Enable()
@@ -47,24 +47,27 @@ namespace Customivisualizer
 			GC.SuppressFinalize(this);
 		}
 
-		public void Apply()
-		{
-			Override(null);
-		}
-
-		public void ApplyOriginal()
+		public void ApplyCustom<T>(Override<T> charaOverride) where T : struct
 		{
 			if (clientState.LocalPlayer == null) return;
-			PluginLog.LogDebug("Applied original");
-			Marshal.StructureToPtr(charaDataOverride.OriginalData, clientState.LocalPlayer.Address + CUSTOMIZE_OFFSET, false);
-			//Marshal.StructureToPtr(charaEquipSlotOverride.OriginalData, clientState.LocalPlayer.Address + EQUIPSLOT_OFFSET, false);
+			Marshal.StructureToPtr(charaCustomizeOverride.CustomData, clientState.LocalPlayer.Address + charaOverride.Offset, false);
+		}
+
+		public void ApplyOriginal<T>(Override<T> charaOverride) where T : struct
+		{
+			if (clientState.LocalPlayer == null) return;
+			PluginLog.LogDebug($"Applied original {typeof(T)} data");
+			Marshal.StructureToPtr(charaOverride.OriginalData, clientState.LocalPlayer.Address + charaOverride.Offset, false);
 		}
 
 		private unsafe void Override(Framework? framework = null)
 		{
-			if (clientState.LocalPlayer == null) return;
-			Marshal.StructureToPtr(charaDataOverride.CustomData, clientState.LocalPlayer.Address + CUSTOMIZE_OFFSET, false);
-			//Marshal.StructureToPtr(charaEquipSlotOverride.CustomData, clientState.LocalPlayer.Address + EQUIPSLOT_OFFSET, false);
+			if (charaCustomizeOverride.Dirty || charaEquipSlotOverride.Dirty)
+			{
+				
+			}
+			if (this.configuration.ToggleCustomization) ApplyCustom(charaCustomizeOverride);
+			if (this.configuration.ToggleEquipSlots) ApplyCustom(charaEquipSlotOverride);
 		}
 	}
 }

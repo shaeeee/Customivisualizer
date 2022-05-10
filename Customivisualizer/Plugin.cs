@@ -97,12 +97,10 @@ namespace Customivisualizer
 #pragma warning restore CS8601 // Possible null reference assignment.
 
 			this.CharaCustomizeOverride = new();
-			this.CharaCustomizeOverride.DataChanged += OnCharaDataChanged;
-			
 			this.CharaEquipSlotOverride = new();
 
 			this.UIHelper = new UIHelper(this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.CharaMakeType>());
-			this.Overrider = new Overrider(this.Framework, clientState, this.CharaCustomizeOverride);
+			this.Overrider = new Overrider(this.Framework, this.ClientState, this.Configuration, this.CharaCustomizeOverride, this.CharaEquipSlotOverride);
 			this.PluginUi = new PluginUI(this.Configuration, this.UIHelper, this.ClientState, this.CharaCustomizeOverride, this.CharaEquipSlotOverride);
 
 			this.CommandManager.AddHandler(commandToggle, new CommandInfo(OnToggleCommand)
@@ -116,6 +114,8 @@ namespace Customivisualizer
 
 			this.PluginInterface.UiBuilder.Draw += DrawUI;
 			this.PluginInterface.UiBuilder.OpenConfigUi += DrawConfigUI;
+
+			this.Framework.Update += FrameworkOnUpdate;
         }
 
 		private void AddHook<T>(string sig, string name, T detour, ref Hook<T> hook) where T : Delegate
@@ -143,28 +143,53 @@ namespace Customivisualizer
 			this.loadCharacterHook.Disable();
 			this.loadCharacterHook.Dispose();
 
-			OnCharaDataChanged(this, EventArgs.Empty);
+			this.Framework.Update -= FrameworkOnUpdate;
+
+			OnCustomizeChanged(true);
+			OnEquipSlotChanged(true);
 
 			this.Overrider.Dispose();
-
-			this.CharaCustomizeOverride.DataChanged -= OnCharaDataChanged;
-
 		}
 
-		private void OnCharaDataChanged(object? sender, EventArgs e)
+		private void FrameworkOnUpdate(Framework framework)
 		{
-			if (this.Configuration.OverrideMode == Configuration.Override.MEM_EDIT && this.Configuration.ToggleCustomization && !Overrider.Enabled)
+			if (this.CharaCustomizeOverride.Dirty) OnCustomizeChanged();
+			//if (this.CharaEquipSlotOverride.Dirty) OnEquipSlotChanged();
+			if (this.CharaCustomizeOverride.Dirty || this.CharaEquipSlotOverride.Dirty)
+			{
+				this.CharaCustomizeOverride.Dirty = false;
+				this.CharaEquipSlotOverride.Dirty = false;
+				RedrawPlayer();
+			}
+		}
+
+		private void OnCustomizeChanged(bool terminate = false)
+		{
+			if (this.Configuration.OverrideMode == Configuration.Override.MEM_EDIT && this.Configuration.ToggleCustomization)
 			{
 				var player = this.ClientState.LocalPlayer;
 				if (player != null) this.CharaCustomizeOverride.SetOriginal(player.Customize);
-				Overrider.Enable();
+				if (!this.Overrider.Enabled) this.Overrider.Enable();
 			}
-			if ((this.Configuration.OverrideMode == Configuration.Override.CLASSIC || this.Configuration.OverrideMode == Configuration.Override.HOOK_LOAD || !this.Configuration.ToggleCustomization || sender == this) && Overrider.Enabled)
+			if ((this.Configuration.OverrideMode == Configuration.Override.CLASSIC || this.Configuration.OverrideMode == Configuration.Override.HOOK_LOAD || !this.Configuration.ToggleCustomization || terminate))
 			{
-				Overrider.ApplyOriginal();
-				Overrider.Disable();
+				this.Overrider.ApplyOriginal(this.CharaCustomizeOverride);
+				this.Overrider.Disable();
 			}
-			RedrawPlayer();
+			
+		}
+		private void OnEquipSlotChanged(bool terminate = false)
+		{
+			if (this.Configuration.OverrideMode == Configuration.Override.MEM_EDIT && this.Configuration.ToggleEquipSlots)
+			{
+				this.CharaEquipSlotOverride.SetOriginal(CharaEquipSlotOverride.GetEquipSlotValues(this.ClientState.LocalPlayer));
+				if (!this.Overrider.Enabled) this.Overrider.Enable();
+			}
+			if ((this.Configuration.OverrideMode == Configuration.Override.CLASSIC || this.Configuration.OverrideMode == Configuration.Override.HOOK_LOAD || !this.Configuration.ToggleEquipSlots || terminate))
+			{
+				this.Overrider.ApplyOriginal(this.CharaEquipSlotOverride);
+				this.Overrider.Disable();
+			}
 		}
 
 		private unsafe void OnToggleCommand(string command, string args)
@@ -176,7 +201,7 @@ namespace Customivisualizer
 					this.Configuration.ToggleCustomization = !this.Configuration.ToggleCustomization;
 					this.Configuration.Save();
 
-					this.CharaCustomizeOverride.ManualInvokeDataChanged();
+					this.CharaCustomizeOverride.Dirty = true;
 					break;
 				case "r":
 					RedrawPlayer();
@@ -355,15 +380,17 @@ namespace Customivisualizer
 			{
 				PluginLog.LogDebug($"LoadActor actorPtr:{actorPtr.ToInt64():X}, v2:{v2.ToInt64():X3}, customizeDataPtr:{customizeDataPtr.ToInt64():X11}, equipSlotDataPtr:{equipSlotDataPtr.ToInt64():X11}, baseAddress:{baseAddress.ToInt64():X}");
 
-				if (this.Configuration.ToggleCustomization)
+				if (this.Configuration.ToggleCustomization || this.Configuration.ToggleEquipSlots)
 				{
 					if (!PROC_BASE_ADDR.HasValue) PROC_BASE_ADDR = baseAddress;
 
 					this.CharaCustomizeOverride.SetOriginal(Override.PtrToByteArray(customizeDataPtr, CharaCustomizeOverride.SIZE));
+					this.CharaEquipSlotOverride.SetOriginal(Override.PtrToByteArray(equipSlotDataPtr, CharaEquipSlotOverride.SIZE));
 
 					if (this.Configuration.OverrideMode == Configuration.Override.HOOK_LOAD)
 					{
-						this.CharaCustomizeOverride.ChangeCustomizeData(customizeDataPtr);
+						if (this.Configuration.ToggleCustomization) this.CharaCustomizeOverride.ChangeCustomizeData(customizeDataPtr);
+						if (this.Configuration.ToggleEquipSlots) this.CharaEquipSlotOverride.ChangeEquipSlotData(equipSlotDataPtr);
 					}
 					return loadCharacterHook.Original(actorPtr, v2, customizeDataPtr, equipSlotDataPtr, baseAddress);
 				}

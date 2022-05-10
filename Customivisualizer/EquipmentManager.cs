@@ -10,13 +10,16 @@ namespace Customivisualizer
 	{
 		private static Lumina.Excel.ExcelSheet<Lumina.Excel.GeneratedSheets.Item>? sheet;
 
-		
-
 		public static void Init(Lumina.Excel.ExcelSheet<Lumina.Excel.GeneratedSheets.Item>? sheet)
 		{
 			if (sheet == null) return;
 			EquipmentManager.sheet = sheet;
 			Build(EquipmentManager.sheet);
+		}
+
+		public void GetItem()
+		{
+
 		}
 
 		private static void Build(Lumina.Excel.ExcelSheet<Lumina.Excel.GeneratedSheets.Item> sheet)
@@ -25,6 +28,11 @@ namespace Customivisualizer
 			{
 				//e.ModelMain
 			}
+		}
+
+		private static void Find()
+		{
+
 		}
 	}
 }

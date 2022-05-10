@@ -25,9 +25,6 @@ namespace Customivisualizer
 		private readonly ClientState clientState;
 		private readonly CharaCustomizeOverride charaCustomizeOverride;
 		private readonly CharaEquipSlotOverride charaEquipSlotOverride;
-		
-		private int[] newCustomizeDataInt;
-		private int[] newEquipSlotDataInt;
 
 		private byte[] newCustomizeData;
 		private byte[] newEquipSlotData;
@@ -47,21 +44,19 @@ namespace Customivisualizer
 			this.charaCustomizeOverride = charaDataOverride;
 			this.charaEquipSlotOverride = charaEquipSlotOverride;
 
-			newCustomizeDataInt = new int[CharaCustomizeOverride.SIZE];
-			newEquipSlotDataInt = new int[CharaEquipSlotOverride.SIZE];
-
 			newCustomizeData = new byte[CharaCustomizeOverride.SIZE];
 			newEquipSlotData = new byte[CharaEquipSlotOverride.SIZE];
 
 			// Init custom appearance values
 			InitializeData();
-			charaDataOverride.ManualInvokeDataChanged();
 		}
 
 		private void UpdatePlayer()
 		{
 			player = clientState.LocalPlayer;
 		}
+
+		#region Init, Save, Reset
 
 		private void InitializeData()
 		{
@@ -73,7 +68,6 @@ namespace Customivisualizer
 		{
 			if (configuration.CustomizationData != null)
 			{
-				Array.Copy(configuration.CustomizationData, newCustomizeDataInt, CharaCustomizeOverride.SIZE);
 				Array.Copy(configuration.CustomizationData, newCustomizeData, CharaCustomizeOverride.SIZE);
 				charaCustomizeOverride.Apply(newCustomizeData);
 				return true;
@@ -85,7 +79,6 @@ namespace Customivisualizer
 		{
 			if (configuration.EquipSlotData != null)
 			{
-				Array.Copy(configuration.EquipSlotData, newEquipSlotDataInt, CharaEquipSlotOverride.SIZE);
 				Array.Copy(configuration.EquipSlotData, newEquipSlotData, CharaEquipSlotOverride.SIZE);
 				charaEquipSlotOverride.Apply(newEquipSlotData);
 				return true;
@@ -103,18 +96,22 @@ namespace Customivisualizer
 		{
 			var player = clientState.LocalPlayer;
 			if (player == null) return;
-			Array.Copy(player.Customize, newCustomizeDataInt, CharaCustomizeOverride.SIZE);
 			Array.Copy(player.Customize, newCustomizeData, CharaCustomizeOverride.SIZE);
 		}
 
 		private void InitializeEquipSlotDefaults()
 		{
 			var player = clientState.LocalPlayer;
-			Array.Copy(uiHelper.GetEquipSlotValues(player), newEquipSlotDataInt, CharaEquipSlotOverride.SIZE);
-			Array.Copy(uiHelper.GetEquipSlotValues(player), newEquipSlotData, CharaEquipSlotOverride.SIZE);
+			Array.Copy(CharaEquipSlotOverride.GetEquipSlotValues(player), newEquipSlotData, CharaEquipSlotOverride.SIZE);
 		}
 
-		private void SaveAppearance()
+		private void Save()
+		{
+			SaveCustomizeData();
+			SaveEquipSlotData();
+		}
+
+		private void SaveCustomizeData()
 		{
 			configuration.CustomizationData = new byte[CharaCustomizeOverride.SIZE];
 			Array.Copy(newCustomizeData, configuration.CustomizationData, CharaCustomizeOverride.SIZE);
@@ -122,13 +119,31 @@ namespace Customivisualizer
 			configuration.Save();
 		}
 
-		private void ResetAppearance()
+		private void SaveEquipSlotData()
+		{
+			configuration.EquipSlotData = new byte[CharaEquipSlotOverride.SIZE];
+			Array.Copy(newEquipSlotData, configuration.EquipSlotData, CharaEquipSlotOverride.SIZE);
+			charaEquipSlotOverride.Apply(newEquipSlotData);
+			configuration.Save();
+		}
+
+		private void ResetCustomizeData()
 		{
 			configuration.CustomizationData = null;
 			configuration.Save();
-			InitializeDefaults();
+			InitializeCustomizeDefaults();
 			charaCustomizeOverride.Apply(newCustomizeData);
 		}
+
+		private void ResetEquipSlotData()
+		{
+			configuration.EquipSlotData = null;
+			configuration.Save();
+			InitializeEquipSlotDefaults();
+			charaEquipSlotOverride.Apply(newEquipSlotData);
+		}
+
+		#endregion
 
 		public void Dispose()
         {
@@ -155,7 +170,6 @@ namespace Customivisualizer
             }
 
 			var overrideMode = (int)configuration.OverrideMode;
-			var toggleCustomization = configuration.ToggleCustomization;
 			var alwaysReload = configuration.AlwaysReload;
 			var showCustomize = configuration.ShowCustomize;
 
@@ -165,7 +179,7 @@ namespace Customivisualizer
 				{
 					configuration.OverrideMode = (Configuration.Override)overrideMode;
 					configuration.Save();
-					if (configuration.ToggleCustomization) charaCustomizeOverride.ManualInvokeDataChanged();
+					if (configuration.ToggleCustomization) charaCustomizeOverride.Dirty = true;
 				}
 				if (ImGui.IsItemHovered())
 				{
@@ -178,14 +192,7 @@ namespace Customivisualizer
 					ImGui.EndTooltip();
 				}
 
-				if (ImGui.Checkbox($"Enable custom appearance", ref toggleCustomization))
-				{
-					configuration.ToggleCustomization = toggleCustomization;
-					configuration.Save();
-					charaCustomizeOverride.ManualInvokeDataChanged();
-				};
-
-				if (ImGui.Checkbox($"Always update appearance", ref alwaysReload))
+				if (ImGui.Checkbox($"Always refresh character", ref alwaysReload))
 				{
 					if (ImGui.IsItemHovered())
 					{
@@ -211,6 +218,7 @@ namespace Customivisualizer
 					bool showEquipSlots = this.configuration.ShowEquipSlot && (this.configuration.OverrideMode == Configuration.Override.HOOK_LOAD || configuration.OverrideMode == Configuration.Override.MEM_EDIT);
 					ImGui.BeginTable("t0", showEquipSlots ? 2 : 1, ImGuiTableFlags.SizingStretchProp);
 					ImGui.TableSetupColumn("c01", ImGuiTableColumnFlags.WidthFixed, 400);
+					ImGui.TableSetupColumn("c02", ImGuiTableColumnFlags.WidthFixed, 700);
 					ImGui.TableNextRow();
 					ImGui.TableNextColumn();
 					ImGui.Text($"[Appearance Data]");
@@ -236,15 +244,6 @@ namespace Customivisualizer
 					ImGui.EndTable();
 					ImGui.Spacing();
 				}
-				if (ImGui.Button($"Update Appearance"))
-				{
-					SaveAppearance();
-				}
-				ImGui.SameLine();
-				if (ImGui.Button($"Reset Appearance"))
-				{
-					ResetAppearance();
-				}
 			}
 
 			ImGui.End();
@@ -252,6 +251,14 @@ namespace Customivisualizer
 
 		private void DrawCustomizeOptions()
 		{
+			var toggleCustomization = configuration.ToggleCustomization;
+			if (ImGui.Checkbox($"Enable custom appearance", ref toggleCustomization))
+			{
+				configuration.ToggleCustomization = toggleCustomization;
+				configuration.Save();
+				charaCustomizeOverride.Dirty = true;
+			};
+
 			var raceAndTribe = uiHelper.GetRaceAndTribe(newCustomizeData);
 
 			ImGui.BeginTable("t1", 3, ImGuiTableFlags.SizingStretchProp);
@@ -271,6 +278,8 @@ namespace Customivisualizer
 
 			for (int i = 0; i < CharaCustomizeOverride.SIZE; i++)
 			{
+				var input = (int)newCustomizeData[i];
+
 				ImGui.TableNextRow();
 				ImGui.TableNextColumn();
 				ImGui.Text($"{Enum.GetName(typeof(CustomizeIndex), i) ?? "Unknown"} = {player?.Customize[i]}");
@@ -281,89 +290,137 @@ namespace Customivisualizer
 				{
 					case CustomizeIndex.Race:
 						ImGui.PushItemWidth(-1);
-						if (ImGui.InputInt($"{i}", ref newCustomizeDataInt[i]) && configuration.AlwaysReload) performReload = true;
+						if (ImGui.InputInt($"{i}", ref input) && configuration.AlwaysReload) performReload = true;
 						ImGui.PopItemWidth();
 						ImGui.TableNextColumn();
 						ImGui.Text($"{raceAndTribe?[0]}");
-						newCustomizeData[i] = (byte)newCustomizeDataInt[i];
+						newCustomizeData[i] = (byte)input;
 						break;
 
 					case CustomizeIndex.Gender:
-						UIHelper.AdjustGender(newCustomizeDataInt[(int)CustomizeIndex.Race], ref newCustomizeDataInt[i]);
+						UIHelper.AdjustGender(newCustomizeData[(int)CustomizeIndex.Race], ref input);
 						ImGui.PushItemWidth(-1);
-						if (ImGui.InputInt($"{i}", ref newCustomizeDataInt[i]) && configuration.AlwaysReload) performReload = true;
+						if (ImGui.InputInt($"{i}", ref input) && configuration.AlwaysReload) performReload = true;
 						ImGui.PopItemWidth();
 						ImGui.TableNextColumn();
-						ImGui.Text(newCustomizeDataInt[i] == 0 ? "Masculine" : "Feminine");
-						newCustomizeData[i] = (byte)newCustomizeDataInt[i];
+						ImGui.Text(input == 0 ? "Masculine" : "Feminine");
+						newCustomizeData[i] = (byte)input;
 						break;
 
 					case CustomizeIndex.Tribe:
-						UIHelper.AdjustTribe(newCustomizeDataInt[(int)CustomizeIndex.Race], ref newCustomizeDataInt[i]);
+						UIHelper.AdjustTribe(newCustomizeData[(int)CustomizeIndex.Race], ref input);
 						ImGui.PushItemWidth(-1);
-						if (ImGui.InputInt($"{i}", ref newCustomizeDataInt[i]) && configuration.AlwaysReload) performReload = true;
+						if (ImGui.InputInt($"{i}", ref input) && configuration.AlwaysReload) performReload = true;
 						ImGui.PopItemWidth();
 						ImGui.TableNextColumn();
 						ImGui.TableSetupColumn("c2", ImGuiTableColumnFlags.WidthFixed, 300);
 						ImGui.Text($"{raceAndTribe?[1]}");
-						newCustomizeData[i] = (byte)newCustomizeDataInt[i];
+						newCustomizeData[i] = (byte)input;
 						break;
 
 					default:
 						ImGui.PushItemWidth(-1);
-						if (ImGui.InputInt($"{i}", ref newCustomizeDataInt[i]) && configuration.AlwaysReload) performReload = true;
+						if (ImGui.InputInt($"{i}", ref input) && configuration.AlwaysReload) performReload = true;
 						ImGui.PopItemWidth();
-						newCustomizeData[i] = (byte)newCustomizeDataInt[i];
+						newCustomizeData[i] = (byte)input;
 						break;
 				}
 			}
 
 			if (performReload)
 			{
-				SaveAppearance();
+				SaveCustomizeData();
 			}
 
 			ImGui.EndTable();
+
+			if (ImGui.Button($"Update Appearance"))
+			{
+				SaveCustomizeData();
+			}
+			ImGui.SameLine();
+			if (ImGui.Button($"Reset Appearance"))
+			{
+				ResetCustomizeData();
+			}
 		}
 
 		private void DrawEquipSlotOptions()
 		{
-			ImGui.BeginTable("t2", 3, ImGuiTableFlags.SizingStretchProp);
-			ImGui.TableSetupColumn("c3", ImGuiTableColumnFlags.WidthFixed, 100);
-			ImGui.TableSetupColumn("c4", ImGuiTableColumnFlags.WidthFixed, 100);
+			var toggleEquipSlots = this.configuration.ToggleEquipSlots;
+			if (ImGui.Checkbox($"Enable equipment override", ref toggleEquipSlots))
+			{
+				configuration.ToggleEquipSlots = toggleEquipSlots;
+				configuration.Save();
+				charaEquipSlotOverride.Dirty = true;
+			};
+
+			ImGui.BeginTable("t2", 6, ImGuiTableFlags.SizingStretchProp);
+			ImGui.TableSetupColumn("c3", ImGuiTableColumnFlags.WidthFixed, 50);
+			ImGui.TableSetupColumn("c3.1", ImGuiTableColumnFlags.WidthFixed, 45);
+			ImGui.TableSetupColumn("c3.2", ImGuiTableColumnFlags.WidthFixed, 45);
+			ImGui.TableSetupColumn("c3.3", ImGuiTableColumnFlags.WidthFixed, 45);
+			ImGui.TableSetupColumn("c4", ImGuiTableColumnFlags.WidthFixed, 150);
 			ImGui.TableSetupColumn("c5", ImGuiTableColumnFlags.WidthFixed, 150);
 
 			bool performReload = false;
 
 			ImGui.TableNextRow();
 			ImGui.TableNextColumn();
-			ImGui.Text($"Memory values");
+			ImGui.Text($"Slot");
 			ImGui.TableNextColumn();
-			ImGui.Text($"Custom values");
+			ImGui.Text($"ID");
 			ImGui.TableNextColumn();
-			ImGui.Text($"Description");
+			ImGui.Text($"Variant");
+			ImGui.TableNextColumn();
+			ImGui.Text($"Dye");
 
-			byte[] equipSlots = uiHelper.GetEquipSlotValues(player);
-
-			for (int i = 0; i < CharaEquipSlotOverride.SIZE; i++)
+			byte[] equipSlots = CharaEquipSlotOverride.GetEquipSlotValues(player);
+			var slotBytes = 4;
+			for (int i = 0; i < CharaEquipSlotOverride.SLOTS; i++)
 			{
+				var slot = i * slotBytes;
+				var modelId = BitConverter.ToUInt16(equipSlots, slot);
+
+				var item = UIHelper.BytesToItem(newEquipSlotData, slot);
+				
 				ImGui.TableNextRow();
 				ImGui.TableNextColumn();
-				ImGui.Text($"{Enum.GetName(typeof(EquipSlotIndex), i) ?? "Unknown"} = {equipSlots[i]}");
-				ImGui.SameLine();
+				ImGui.Text($"{Enum.GetName(typeof(EquipSlotIndex), slot)}");
 				ImGui.TableNextColumn();
-				ImGui.PushItemWidth(-1);
-				if (ImGui.InputInt($"{i}", ref newEquipSlotDataInt[i]) && configuration.AlwaysReload) performReload = true;
+				ImGui.Text($"{modelId}");
+				ImGui.TableNextColumn();
+				ImGui.Text($"{equipSlots[slot+2]}");
+				ImGui.TableNextColumn();
+				ImGui.Text($"{equipSlots[slot+3]}");
+				ImGui.TableNextColumn();
+				ImGui.PushItemWidth(-1); 
+				if (ImGui.InputInt3($"{i}e", ref item[0]) && configuration.AlwaysReload) performReload = true;
 				ImGui.PopItemWidth();
-				newEquipSlotData[i] = (byte)newEquipSlotDataInt[i];
+				
+				var bytes = UIHelper.ItemToBytes(item);
+				newEquipSlotData[slot] = bytes[0];
+				newEquipSlotData[slot+1] = bytes[1];
+				newEquipSlotData[slot+2] = bytes[2];
+				newEquipSlotData[slot+3] = bytes[3];
 			}
 
 			if (performReload)
 			{
-				SaveAppearance();
+				SaveEquipSlotData();
 			}
 
 			ImGui.EndTable();
+
+			if (ImGui.Button($"Update Equipment"))
+			{
+				SaveEquipSlotData();
+			}
+			ImGui.SameLine();
+			if (ImGui.Button($"Reset Equipment"))
+			{
+				ResetEquipSlotData();
+			}
 		}
     }
 }
