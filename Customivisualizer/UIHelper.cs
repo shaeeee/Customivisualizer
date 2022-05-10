@@ -48,16 +48,5 @@ namespace Customivisualizer
 			var bChara = (FFXIVClientStructs.FFXIV.Client.Game.Character.BattleChara*)(void*)player.Address;
 			return Marshal.PtrToStructure<CharaEquipSlotData>((IntPtr)bChara->Character.EquipSlotData);
 		}
-
-		public static int[] BytesToItem(byte[] data, int slot)
-		{
-			return new int[] { BitConverter.ToUInt16(data, slot), data[slot + 2], data[slot + 3] };
-		}
-
-		public static byte[] ItemToBytes(int[] data)
-		{
-			var modelId = BitConverter.GetBytes(data[0]);
-			return new byte[] { modelId[0], modelId[1], (byte)data[1], (byte)data[2] };
-		}
 	}
 }

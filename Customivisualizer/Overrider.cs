@@ -6,68 +6,47 @@ using System.Runtime.InteropServices;
 
 namespace Customivisualizer
 {
-	public class Overrider : IDisposable
+	public class Overrider<T,L> : IDisposable where T : Override<L> where L : struct
 	{
 		private Framework framework;
 		private ClientState clientState;
 		private Configuration configuration;
-		private CharaCustomizeOverride charaCustomizeOverride;
-		private CharaEquipSlotOverride charaEquipSlotOverride;
+		private Override<L> overrideData;
 
-		public bool Enabled { get; private set; }
+		public bool Enabled { get; set; }
 
-		internal Overrider(Framework framework, ClientState clientState, Configuration configuration, CharaCustomizeOverride charaDataOverride, CharaEquipSlotOverride charaEquipSlotOverride)
+		internal Overrider(Framework framework, ClientState clientState, Configuration configuration, Override<L> overrideData)
 		{
 			this.framework = framework;
 			this.clientState = clientState;
 			this.configuration = configuration;
-			this.charaCustomizeOverride = charaDataOverride;
-			this.charaEquipSlotOverride = charaEquipSlotOverride;
-		}
+			this.overrideData = overrideData;
 
-		public void Enable()
-		{
-			if (Enabled) return;
-			PluginLog.LogDebug("Overrider enabled");
 			this.framework.Update += Override;
-			Enabled = true;
-		}
-
-		public void Disable()
-		{
-			if (!Enabled) return;
-			PluginLog.LogDebug("Overrider disabled");
-			this.framework.Update -= Override;
-			Enabled = false;
 		}
 
 		public void Dispose()
 		{
-			Disable();
+			this.framework.Update -= Override;
 			GC.SuppressFinalize(this);
 		}
 
-		public void ApplyCustom<T>(Override<T> charaOverride) where T : struct
+		private void ApplyCustom()
 		{
 			if (clientState.LocalPlayer == null) return;
-			Marshal.StructureToPtr(charaCustomizeOverride.CustomData, clientState.LocalPlayer.Address + charaOverride.Offset, false);
+			Marshal.StructureToPtr(overrideData.CustomData, clientState.LocalPlayer.Address + overrideData.Offset, false);
 		}
 
-		public void ApplyOriginal<T>(Override<T> charaOverride) where T : struct
+		public void ApplyOriginal()
 		{
-			if (clientState.LocalPlayer == null) return;
-			PluginLog.LogDebug($"Applied original {typeof(T)} data");
-			Marshal.StructureToPtr(charaOverride.OriginalData, clientState.LocalPlayer.Address + charaOverride.Offset, false);
+			if (clientState.LocalPlayer == null || !overrideData.HasOriginalData) return;
+			PluginLog.LogDebug($"Applied original {typeof(L)} data");
+			Marshal.StructureToPtr(overrideData.OriginalData, clientState.LocalPlayer.Address + overrideData.Offset, false);
 		}
 
 		private unsafe void Override(Framework? framework = null)
 		{
-			if (charaCustomizeOverride.Dirty || charaEquipSlotOverride.Dirty)
-			{
-				
-			}
-			if (this.configuration.ToggleCustomization) ApplyCustom(charaCustomizeOverride);
-			if (this.configuration.ToggleEquipSlots) ApplyCustom(charaEquipSlotOverride);
+			if (Enabled && !overrideData.Dirty && this.configuration.OverrideMode == Configuration.Override.MEM_EDIT) ApplyCustom();
 		}
 	}
 }

@@ -45,7 +45,8 @@ namespace Customivisualizer
 		private UIHelper UIHelper { get; init; }
 		private CharaCustomizeOverride CharaCustomizeOverride { get; init; }
 		private CharaEquipSlotOverride CharaEquipSlotOverride { get; init; }
-		private Overrider Overrider { get; init; }
+		private Overrider<CharaCustomizeOverride, CharaCustomizeData> CustomizeOverrider { get; init; }
+		private Overrider<CharaEquipSlotOverride, CharaEquipSlotData> EquipslotOverrider { get; init; }
 
 		private delegate IntPtr InitializeCharacter(IntPtr drawObjectPtr, IntPtr customizeDataPtr);
 		private unsafe delegate IntPtr SetCharacterFlag(IntPtr ptr, char* flag, IntPtr actorPtr);
@@ -57,7 +58,6 @@ namespace Customivisualizer
 
 		private Lumina.Excel.ExcelSheet<Lumina.Excel.GeneratedSheets.CharaMakeType>? charaSheet;
 		private Lumina.Excel.ExcelSheet<Lumina.Excel.GeneratedSheets.OnlineStatus>? statusSheet;
-		private Lumina.Excel.ExcelSheet<Lumina.Excel.GeneratedSheets.Item>? itemSheet;
 
 		private bool inCutscene;
 		private bool outCutsceneRedrawQueued;
@@ -83,7 +83,7 @@ namespace Customivisualizer
 
 			charaSheet = this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.CharaMakeType>();
 			statusSheet = this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.OnlineStatus>();
-			itemSheet = this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.Item>();
+			EquipmentHelper.Init(this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.Item>());
 
 			this.Configuration = this.PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
             this.Configuration.Initialize(this.PluginInterface);
@@ -100,7 +100,8 @@ namespace Customivisualizer
 			this.CharaEquipSlotOverride = new();
 
 			this.UIHelper = new UIHelper(this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.CharaMakeType>());
-			this.Overrider = new Overrider(this.Framework, this.ClientState, this.Configuration, this.CharaCustomizeOverride, this.CharaEquipSlotOverride);
+			this.CustomizeOverrider = new Overrider<CharaCustomizeOverride, CharaCustomizeData>(this.Framework, this.ClientState, this.Configuration, this.CharaCustomizeOverride);
+			this.EquipslotOverrider = new Overrider<CharaEquipSlotOverride, CharaEquipSlotData>(this.Framework, this.ClientState, this.Configuration, this.CharaEquipSlotOverride);
 			this.PluginUi = new PluginUI(this.Configuration, this.UIHelper, this.ClientState, this.CharaCustomizeOverride, this.CharaEquipSlotOverride);
 
 			this.CommandManager.AddHandler(commandToggle, new CommandInfo(OnToggleCommand)
@@ -148,15 +149,21 @@ namespace Customivisualizer
 			OnCustomizeChanged(true);
 			OnEquipSlotChanged(true);
 
-			this.Overrider.Dispose();
+			RedrawPlayer();
+
+			this.CustomizeOverrider.Dispose();
+			this.EquipslotOverrider.Dispose();
 		}
 
 		private void FrameworkOnUpdate(Framework framework)
 		{
-			if (this.CharaCustomizeOverride.Dirty) OnCustomizeChanged();
-			//if (this.CharaEquipSlotOverride.Dirty) OnEquipSlotChanged();
+			this.CustomizeOverrider.Enabled = this.Configuration.ToggleCustomization;
+			this.EquipslotOverrider.Enabled = this.Configuration.ToggleEquipSlots;
+
 			if (this.CharaCustomizeOverride.Dirty || this.CharaEquipSlotOverride.Dirty)
 			{
+				if (this.CharaCustomizeOverride.Dirty) OnCustomizeChanged();
+				if (this.CharaEquipSlotOverride.Dirty) OnEquipSlotChanged();
 				this.CharaCustomizeOverride.Dirty = false;
 				this.CharaEquipSlotOverride.Dirty = false;
 				RedrawPlayer();
@@ -165,30 +172,26 @@ namespace Customivisualizer
 
 		private void OnCustomizeChanged(bool terminate = false)
 		{
-			if (this.Configuration.OverrideMode == Configuration.Override.MEM_EDIT && this.Configuration.ToggleCustomization)
+			if (this.Configuration.OverrideMode == Configuration.Override.MEM_EDIT && this.Configuration.ToggleCustomization && !terminate)
 			{
 				var player = this.ClientState.LocalPlayer;
-				if (player != null) this.CharaCustomizeOverride.SetOriginal(player.Customize);
-				if (!this.Overrider.Enabled) this.Overrider.Enable();
+				if (player != null && !this.CharaCustomizeOverride.HasOriginalData) this.CharaCustomizeOverride.SetOriginal(player.Customize);
 			}
-			if ((this.Configuration.OverrideMode == Configuration.Override.CLASSIC || this.Configuration.OverrideMode == Configuration.Override.HOOK_LOAD || !this.Configuration.ToggleCustomization || terminate))
+			if (this.Configuration.OverrideMode == Configuration.Override.CLASSIC || this.Configuration.OverrideMode == Configuration.Override.HOOK_LOAD || !this.Configuration.ToggleCustomization || terminate)
 			{
-				this.Overrider.ApplyOriginal(this.CharaCustomizeOverride);
-				this.Overrider.Disable();
+				this.CustomizeOverrider.ApplyOriginal();
 			}
 			
 		}
 		private void OnEquipSlotChanged(bool terminate = false)
 		{
-			if (this.Configuration.OverrideMode == Configuration.Override.MEM_EDIT && this.Configuration.ToggleEquipSlots)
+			if (this.Configuration.OverrideMode == Configuration.Override.MEM_EDIT && this.Configuration.ToggleEquipSlots && !terminate)
 			{
-				this.CharaEquipSlotOverride.SetOriginal(CharaEquipSlotOverride.GetEquipSlotValues(this.ClientState.LocalPlayer));
-				if (!this.Overrider.Enabled) this.Overrider.Enable();
+				if (!this.CharaEquipSlotOverride.HasOriginalData) this.CharaEquipSlotOverride.SetOriginal(CharaEquipSlotOverride.GetEquipSlotValues(this.ClientState.LocalPlayer));
 			}
-			if ((this.Configuration.OverrideMode == Configuration.Override.CLASSIC || this.Configuration.OverrideMode == Configuration.Override.HOOK_LOAD || !this.Configuration.ToggleEquipSlots || terminate))
+			if (this.Configuration.OverrideMode == Configuration.Override.CLASSIC || this.Configuration.OverrideMode == Configuration.Override.HOOK_LOAD || !this.Configuration.ToggleEquipSlots || terminate)
 			{
-				this.Overrider.ApplyOriginal(this.CharaEquipSlotOverride);
-				this.Overrider.Disable();
+				//this.EquipslotOverrider.ApplyOriginal();
 			}
 		}
 
@@ -215,11 +218,8 @@ namespace Customivisualizer
 				case "l":
 					OnLookup();
 					break;
-				case "l2":
-					OnLookup2();
-					break;
 				case "t":
-					this.Configuration.ShowEquipSlot = !this.Configuration.ShowEquipSlot;
+					this.Configuration.ShowEquipSlots = !this.Configuration.ShowEquipSlots;
 					this.Configuration.Save();
 					break;
 				case "hex":
@@ -289,13 +289,6 @@ namespace Customivisualizer
 			if (this.ClientState.LocalPlayer == null) return;
 			var battleChara = (FFXIVClientStructs.FFXIV.Client.Game.Character.BattleChara*)(void*)this.ClientState.LocalPlayer.Address;
 			PluginLog.Log($"PlayerPtr:{((IntPtr)battleChara).ToInt64():X}, CustomizeDataPtr:{((IntPtr)battleChara->Character.CustomizeData).ToInt64():X}, EquipSlotDataPtr:{((IntPtr)battleChara->Character.EquipSlotData).ToInt64():X}, DrawObjectPtr:{GetDrawObjectPtr().ToInt64():X}");
-		}
-
-		private void OnLookup2()
-		{
-			var s = itemSheet;
-			var r = s?.GetRow(16623);
-			PluginLog.Log($"{r?.ModelSub}");
 		}
 
 		#endregion

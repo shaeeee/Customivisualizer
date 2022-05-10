@@ -18,20 +18,23 @@ namespace Customivisualizer
 	{
 		public bool Dirty { get; set; }
 
+		public bool HasOriginalData { get; set; }
+
 		public T CustomData { get; protected set; }
 		public T OriginalData { get; protected set; }
 
 		public abstract int Offset { get; }
 
-		public virtual void Apply(byte[] data)
+		public virtual void Apply(byte[] data, bool dirty = true)
 		{
 			CustomData = ByteArrayToStruct(data);
-			Dirty = true;
+			if (dirty) Dirty = true;
 		}
 
 		public virtual void SetOriginal(byte[] data)
 		{
 			OriginalData = ByteArrayToStruct(data);
+			HasOriginalData = true;
 			PluginLog.LogDebug($"Original {typeof(T)} data saved");
 		}
 
