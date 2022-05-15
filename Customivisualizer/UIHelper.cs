@@ -1,5 +1,7 @@
 ﻿using Dalamud.Game.ClientState.Objects.Enums;
 using System;
+using Lumina.Excel;
+using Lumina.Excel.GeneratedSheets;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -10,11 +12,13 @@ namespace Customivisualizer
 {
 	public class UIHelper
 	{
-		private Lumina.Excel.ExcelSheet<Lumina.Excel.GeneratedSheets.CharaMakeType>? charaSheet;
+		public ExcelSheet<CharaMakeType>? charaSheet { get; private set; }
+		public ExcelSheet<Stain>? dyeSheet { get; private set; }
 
-		public UIHelper(Lumina.Excel.ExcelSheet<Lumina.Excel.GeneratedSheets.CharaMakeType>? charaSheet)
+		public UIHelper(ExcelSheet<CharaMakeType>? charaSheet, ExcelSheet<Stain>? dyeSheet)
 		{
 			this.charaSheet = charaSheet;
+			this.dyeSheet = dyeSheet;
 		}
 
 		public static void AdjustTribe(int race, ref int tribe)

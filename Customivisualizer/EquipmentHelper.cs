@@ -12,7 +12,6 @@ namespace Customivisualizer
 
 		public static void Init(Lumina.Excel.ExcelSheet<Lumina.Excel.GeneratedSheets.Item>? sheet)
 		{
-			if (sheet == null) return;
 			EquipmentHelper.sheet = sheet;
 		}
 

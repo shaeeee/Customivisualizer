@@ -33,6 +33,8 @@ namespace Customivisualizer
 
 		private Dalamud.Game.ClientState.Objects.SubKinds.PlayerCharacter? player;
 
+		private ColorPicker dyeColorPicker;
+
 		public PluginUI(
 			Configuration configuration,
 			UIHelper uiHelper,
@@ -53,6 +55,8 @@ namespace Customivisualizer
 
 			// Init custom appearance values
 			InitializeData();
+
+			this.dyeColorPicker = new(uiHelper.dyeSheet);
 		}
 
 		private void UpdatePlayer()
@@ -174,6 +178,7 @@ namespace Customivisualizer
 					configuration.Save();
 					if (configuration.ToggleCustomization) charaCustomizeOverride.Dirty = true;
 				}
+				
 				if (ImGui.IsItemHovered())
 				{
 					ImGui.BeginTooltip();
@@ -197,7 +202,7 @@ namespace Customivisualizer
 					configuration.Save();
 				}
 
-				if (ImGui.Checkbox($"Show data editor", ref showCustomize))
+				if (ImGui.Checkbox($"Show appearance editor", ref showCustomize))
 				{
 					configuration.ShowCustomize = showCustomize;
 					configuration.Save();
@@ -210,7 +215,7 @@ namespace Customivisualizer
 						configuration.Save();
 					}
 				}
-				
+
 				ImGui.Spacing();
 				ImGui.Spacing();
 
@@ -407,6 +412,19 @@ namespace Customivisualizer
 				ImGui.TableNextColumn();
 				ImGui.PushItemWidth(-1); 
 				if (ImGui.InputInt3($"##label {i}z", ref item[0]) && configuration.AlwaysReload) performReload = true;
+
+				if (ImGui.ColorButton($"Dye for {Enum.GetName(typeof(EquipSlotIndex), slot)} slot", dyeColorPicker.GetColor(newEquipSlotData[slot+3])))
+				{
+					ImGui.OpenPopup($"Dye Selector for {Enum.GetName(typeof(EquipSlotIndex), slot)} slot");
+					ImGui.SetNextWindowSize(new System.Numerics.Vector2(400, 300));
+				}
+				var b = true;
+				if (ImGui.BeginPopupModal($"Dye Selector for {Enum.GetName(typeof(EquipSlotIndex), slot)} slot", ref b))
+				{
+					dyeColorPicker.BuildDyeSwatchUI(ref item, ref performReload);
+					ImGui.EndPopup();
+				}
+
 				ImGui.PopItemWidth();
 				ImGui.TableNextColumn();
 

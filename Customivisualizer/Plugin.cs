@@ -99,7 +99,7 @@ namespace Customivisualizer
 			this.CharaCustomizeOverride = new();
 			this.CharaEquipSlotOverride = new();
 
-			this.UIHelper = new UIHelper(this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.CharaMakeType>());
+			this.UIHelper = new UIHelper(this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.CharaMakeType>(), this.DataManager.GetExcelSheet<Lumina.Excel.GeneratedSheets.Stain>());
 			this.CustomizeOverrider = new Overrider<CharaCustomizeOverride, CharaCustomizeData>(this.Framework, this.ClientState, this.Configuration, this.CharaCustomizeOverride);
 			this.EquipslotOverrider = new Overrider<CharaEquipSlotOverride, CharaEquipSlotData>(this.Framework, this.ClientState, this.Configuration, this.CharaEquipSlotOverride);
 			this.PluginUi = new PluginUI(this.Configuration, this.UIHelper, this.ClientState, this.CharaCustomizeOverride, this.CharaEquipSlotOverride);
