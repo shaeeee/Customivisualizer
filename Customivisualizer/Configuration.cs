@@ -14,13 +14,15 @@ namespace Customivisualizer
 			HOOK_LOAD
 		}
 
-        public int Version { get; set; } = 0;
+        public int Version { get; set; } = 1;
 
         public bool ShowCustomize { get; set; }
 
-		public bool ShowEquipSlot { get; set; }
+		public bool ShowEquipSlots { get; set; }
 
 		public bool ToggleCustomization { get; set; }
+
+		public bool ToggleEquipSlots { get; set; }
 
 		public bool AlwaysReload { get; set; }
 

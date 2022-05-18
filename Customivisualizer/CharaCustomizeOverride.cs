@@ -7,6 +7,8 @@ namespace Customivisualizer
 	{
 		public const int SIZE = 26;
 
+		public override int Offset => 0x830;
+
 		public void ChangeCustomizeData(IntPtr customizeDataPtr)
 		{
 			var customData = Marshal.PtrToStructure<CharaCustomizeData>(customizeDataPtr);

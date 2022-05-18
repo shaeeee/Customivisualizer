@@ -16,21 +16,26 @@ namespace Customivisualizer
 
 	public abstract class Override<T> where T : struct
 	{
-		public event EventHandler? DataChanged;
+		public bool Dirty { get; set; }
+
+		public bool HasOriginalData { get; set; }
 
 		public T CustomData { get; protected set; }
 		public T OriginalData { get; protected set; }
 
-		public virtual void Apply(byte[] data)
+		public abstract int Offset { get; }
+
+		public virtual void Apply(byte[] data, bool dirty = true)
 		{
 			CustomData = ByteArrayToStruct(data);
-			OnDataChanged();
+			if (dirty) Dirty = true;
 		}
 
 		public virtual void SetOriginal(byte[] data)
 		{
 			OriginalData = ByteArrayToStruct(data);
-			PluginLog.LogDebug("Original data saved");
+			HasOriginalData = true;
+			PluginLog.LogDebug($"Original {typeof(T)} data saved");
 		}
 
 		protected T ByteArrayToStruct(byte[] data)
@@ -46,16 +51,6 @@ namespace Customivisualizer
 				handle.Free();
 			}
 			return structData;
-		}
-
-		public void ManualInvokeDataChanged()
-		{
-			OnDataChanged();
-		}
-
-		protected virtual void OnDataChanged()
-		{
-			DataChanged?.Invoke(this, EventArgs.Empty);
 		}
 	}
 }

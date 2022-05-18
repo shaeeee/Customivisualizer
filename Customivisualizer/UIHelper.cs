@@ -1,5 +1,7 @@
 ﻿using Dalamud.Game.ClientState.Objects.Enums;
 using System;
+using Lumina.Excel;
+using Lumina.Excel.GeneratedSheets;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -10,11 +12,13 @@ namespace Customivisualizer
 {
 	public class UIHelper
 	{
-		private Lumina.Excel.ExcelSheet<Lumina.Excel.GeneratedSheets.CharaMakeType>? charaSheet;
+		public ExcelSheet<CharaMakeType>? charaSheet { get; private set; }
+		public ExcelSheet<Stain>? dyeSheet { get; private set; }
 
-		public UIHelper(Lumina.Excel.ExcelSheet<Lumina.Excel.GeneratedSheets.CharaMakeType>? charaSheet)
+		public UIHelper(ExcelSheet<CharaMakeType>? charaSheet, ExcelSheet<Stain>? dyeSheet)
 		{
 			this.charaSheet = charaSheet;
+			this.dyeSheet = dyeSheet;
 		}
 
 		public static void AdjustTribe(int race, ref int tribe)
@@ -42,13 +46,11 @@ namespace Customivisualizer
 			return (uint)(2u * tribe + gender - 2u);
 		}
 
-		public unsafe byte[] GetEquipSlotValues(Dalamud.Game.ClientState.Objects.SubKinds.PlayerCharacter? player)
+		public unsafe CharaEquipSlotData GetEquipSlotData(Dalamud.Game.ClientState.Objects.SubKinds.PlayerCharacter? player)
 		{
-			if (player == null) return new byte[CharaEquipSlotOverride.SIZE];
+			if (player == null) return new CharaEquipSlotData();
 			var bChara = (FFXIVClientStructs.FFXIV.Client.Game.Character.BattleChara*)(void*)player.Address;
-			byte[] bytes = new byte[CharaEquipSlotOverride.SIZE];
-			Marshal.Copy((IntPtr)bChara->Character.EquipSlotData, bytes, 0, CharaEquipSlotOverride.SIZE);
-			return bytes;
+			return Marshal.PtrToStructure<CharaEquipSlotData>((IntPtr)bChara->Character.EquipSlotData);
 		}
 	}
 }
