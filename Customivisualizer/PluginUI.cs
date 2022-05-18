@@ -170,7 +170,7 @@ namespace Customivisualizer
 			var showCustomize = configuration.ShowCustomize;
 			var showEquipSlots = configuration.ShowEquipSlots;
 
-            if (ImGui.Begin("Customivisualizer Config", ref settingsVisible, ImGuiWindowFlags.AlwaysAutoResize))
+            if (ImGui.Begin($"Customivisualizer Config", ref settingsVisible, ImGuiWindowFlags.AlwaysAutoResize))
             {
 				if (ImGui.Combo($"Override Mode", ref overrideMode, Enum.GetNames<Configuration.Override>(), 3))
 				{
@@ -232,7 +232,7 @@ namespace Customivisualizer
 					if (showEquipSlots)
 					{
 						ImGui.TableNextColumn();
-						ImGui.Text($"[Equip Slot Data] (WORK IN PROGRESS)");
+						ImGui.Text($"[Equip Slot Data] (WORK IN PROGRESS - USE AT OWN RISK)");
 					}
 
 					ImGui.Spacing();

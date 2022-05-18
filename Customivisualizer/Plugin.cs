@@ -17,6 +17,8 @@ namespace Customivisualizer
 	public sealed class Plugin : IDalamudPlugin
 	{
 		private IntPtr? PROC_BASE_ADDR;
+
+		private const int REDRAW_LATENCY = 100;
 		
 		private const uint FLAG_INVIS = (1 << 1) | (1 << 11);
 		private const int OFFSET_RENDER_TOGGLE = 0x104;
@@ -50,7 +52,7 @@ namespace Customivisualizer
 
 		private delegate IntPtr InitializeCharacter(IntPtr drawObjectPtr, IntPtr customizeDataPtr);
 		private unsafe delegate IntPtr SetCharacterFlag(IntPtr ptr, char* flag, IntPtr actorPtr);
-		private delegate IntPtr LoadCharacter(IntPtr actorPtr, IntPtr v2, IntPtr customizeDataPtr, IntPtr v4, IntPtr baseOffset);
+		private delegate IntPtr LoadCharacter(IntPtr actorPtr, IntPtr v2, IntPtr customizeDataPtr, IntPtr v4, IntPtr baseOffset, IntPtr v6);
 		
 		private Hook<InitializeCharacter> initializeCharacterHook;
 		private Hook<SetCharacterFlag> setCharacterFlagHook;
@@ -340,6 +342,7 @@ namespace Customivisualizer
 
 		private async void OnOnlineStatusChanged()
 		{
+			if (this.Configuration.OverrideMode != Configuration.Override.CLASSIC) return;
 			inCutscene = InCutscene() || inCutscene;
 			if (!InCutscene() && inCutscene && !outCutsceneRedrawQueued && this.Configuration.ToggleCustomization)
 			{
@@ -366,12 +369,12 @@ namespace Customivisualizer
 		#region Character loading
 
 		// Back up original character data every time character is loaded, and if using HOOK_LOAD also replace data.
-		private IntPtr LoadCharacterDetour(IntPtr actorPtr, IntPtr v2, IntPtr customizeDataPtr, IntPtr equipSlotDataPtr, IntPtr baseAddress)
+		private IntPtr LoadCharacterDetour(IntPtr actorPtr, IntPtr v2, IntPtr customizeDataPtr, IntPtr equipSlotDataPtr, IntPtr baseAddress, IntPtr v6)
 		{
 			var player = this.ClientState.LocalPlayer;
 			if (player != null && actorPtr == player.Address)
 			{
-				PluginLog.LogDebug($"LoadActor actorPtr:{actorPtr.ToInt64():X}, v2:{v2.ToInt64():X3}, customizeDataPtr:{customizeDataPtr.ToInt64():X11}, equipSlotDataPtr:{equipSlotDataPtr.ToInt64():X11}, baseAddress:{baseAddress.ToInt64():X}");
+				PluginLog.LogDebug($"LoadActor actorPtr:{actorPtr.ToInt64():X}, v2:{v2.ToInt64():X3}, customizeDataPtr:{customizeDataPtr.ToInt64():X11}, equipSlotDataPtr:{equipSlotDataPtr.ToInt64():X11}, baseAddress:{baseAddress.ToInt64():X}, v6:{v6.ToInt64():X}");
 
 				if (this.Configuration.ToggleCustomization || this.Configuration.ToggleEquipSlots)
 				{
@@ -385,10 +388,10 @@ namespace Customivisualizer
 						if (this.Configuration.ToggleCustomization) this.CharaCustomizeOverride.ChangeCustomizeData(customizeDataPtr);
 						if (this.Configuration.ToggleEquipSlots) this.CharaEquipSlotOverride.ChangeEquipSlotData(equipSlotDataPtr);
 					}
-					return loadCharacterHook.Original(actorPtr, v2, customizeDataPtr, equipSlotDataPtr, baseAddress);
+					return loadCharacterHook.Original(actorPtr, v2, customizeDataPtr, equipSlotDataPtr, baseAddress, v6);
 				}
 			}
-			return loadCharacterHook.Original(actorPtr, v2, customizeDataPtr, equipSlotDataPtr, baseAddress);
+			return loadCharacterHook.Original(actorPtr, v2, customizeDataPtr, equipSlotDataPtr, baseAddress, v6);
 		}
 
 		// This will not crash the game, but the player won't get reloaded properly either, TODO look at hooking higher level function
@@ -403,7 +406,7 @@ namespace Customivisualizer
 			Marshal.StructureToPtr(this.CharaCustomizeOverride.OriginalData, cHandle.AddrOfPinnedObject(), false);
 			Marshal.StructureToPtr(this.CharaCustomizeOverride.OriginalData, eHandle.AddrOfPinnedObject(), false);
 
-			loadCharacterHook.Original(actor.Address, IntPtr.Zero, cHandle.AddrOfPinnedObject(), eHandle.AddrOfPinnedObject(), PROC_BASE_ADDR.Value);
+			loadCharacterHook.Original(actor.Address, IntPtr.Zero, cHandle.AddrOfPinnedObject(), eHandle.AddrOfPinnedObject(), PROC_BASE_ADDR.Value, IntPtr.Zero);
 
 			cHandle.Free();
 			eHandle.Free();
@@ -433,7 +436,7 @@ namespace Customivisualizer
 				// Trigger a rerender
 				val |= (int)FLAG_INVIS;
 				Marshal.WriteInt32(addrRenderToggle, val);
-				await Task.Delay(100);
+				await Task.Delay(REDRAW_LATENCY);
 				val &= ~(int)FLAG_INVIS;
 				Marshal.WriteInt32(addrRenderToggle, val);
 			}
