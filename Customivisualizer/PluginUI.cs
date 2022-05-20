@@ -35,17 +35,20 @@ namespace Customivisualizer
 
 		private ColorPicker dyeColorPicker;
 
+		private UIPanel customizePanel;
+		private UIPanel equipSlotPanel;
+
 		public PluginUI(
 			Configuration configuration,
 			UIHelper uiHelper,
 			ClientState clientState,
-			CharaCustomizeOverride charaDataOverride,
+			CharaCustomizeOverride charaCustomizeOverride,
 			CharaEquipSlotOverride charaEquipSlotOverride)
         {
             this.configuration = configuration;
 			this.uiHelper = uiHelper;
 			this.clientState = clientState;
-			this.charaCustomizeOverride = charaDataOverride;
+			this.charaCustomizeOverride = charaCustomizeOverride;
 			this.charaEquipSlotOverride = charaEquipSlotOverride;
 
 			newCustomizeData = new byte[CharaCustomizeOverride.SIZE];
@@ -57,6 +60,9 @@ namespace Customivisualizer
 			InitializeData();
 
 			this.dyeColorPicker = new(uiHelper.dyeSheet);
+
+			customizePanel = new($"[Appearance Data]", DrawCustomizeOptions, 430);
+			equipSlotPanel = new($"[Equip Slot Data] (WORK IN PROGRESS - USE AT OWN RISK)", DrawEquipSlotOptions, 480);
 		}
 
 		private void UpdatePlayer()
@@ -208,7 +214,7 @@ namespace Customivisualizer
 					configuration.Save();
 				}
 				ImGui.SameLine();
-				if (this.configuration.OverrideMode == Configuration.Override.HOOK_LOAD || configuration.OverrideMode == Configuration.Override.MEM_EDIT) {
+				if (configuration.OverrideMode == Configuration.Override.HOOK_LOAD || configuration.OverrideMode == Configuration.Override.MEM_EDIT) {
 					if (ImGui.Checkbox($"Show equipment editor", ref showEquipSlots))
 					{
 						configuration.ShowEquipSlots = showEquipSlots;
@@ -219,41 +225,43 @@ namespace Customivisualizer
 				ImGui.Spacing();
 				ImGui.Spacing();
 
-				if (showCustomize)
-				{	
-					showEquipSlots = configuration.ShowEquipSlots && (configuration.OverrideMode == Configuration.Override.HOOK_LOAD || configuration.OverrideMode == Configuration.Override.MEM_EDIT);
-					ImGui.BeginTable("t0", showEquipSlots ? 2 : 1, ImGuiTableFlags.SizingStretchProp);
-					ImGui.TableSetupColumn("c01", ImGuiTableColumnFlags.WidthFixed, 430);
-					ImGui.TableSetupColumn("c02", ImGuiTableColumnFlags.WidthFixed, 480);
-					ImGui.TableNextRow();
-					ImGui.TableNextColumn();
-					ImGui.Text($"[Appearance Data]");
-
-					if (showEquipSlots)
-					{
-						ImGui.TableNextColumn();
-						ImGui.Text($"[Equip Slot Data] (WORK IN PROGRESS - USE AT OWN RISK)");
-					}
-
-					ImGui.Spacing();
-					ImGui.TableNextRow();
-					ImGui.TableSetColumnIndex(0);
-					
-					DrawCustomizeOptions();
-					
-					if (showEquipSlots)
-					{
-						ImGui.TableNextColumn();
-						DrawEquipSlotOptions();
-					}
-					
-					ImGui.EndTable();
-					ImGui.Spacing();
+				if (showCustomize || showEquipSlots)
+				{
+					BuildContentTable();
 				}
 			}
 
 			ImGui.End();
         }
+
+		// terrible implementation to start refactor
+		private void BuildContentTable()
+		{
+			var colCount = Convert.ToInt32(configuration.ShowCustomize) + Convert.ToInt32(configuration.ShowEquipSlots);
+			ImGui.BeginTable("t0", colCount, ImGuiTableFlags.SizingStretchProp);
+			if (configuration.ShowCustomize) ImGui.TableSetupColumn("c01", ImGuiTableColumnFlags.WidthFixed, customizePanel.Width);
+			if (configuration.ShowEquipSlots) ImGui.TableSetupColumn("c02", ImGuiTableColumnFlags.WidthFixed, equipSlotPanel.Width);
+			
+			ImGui.TableNextRow();
+			ImGui.TableNextColumn();
+			ImGui.Text(colCount > 1 || configuration.ShowCustomize ? customizePanel.Header : equipSlotPanel.Header);
+			if (colCount > 1 && configuration.ShowEquipSlots)
+			{
+				ImGui.TableNextColumn();
+				ImGui.Text(equipSlotPanel.Header);
+			}
+
+			ImGui.Spacing();
+			ImGui.TableNextRow();
+			ImGui.TableSetColumnIndex(0);
+
+			if (colCount > 1 || configuration.ShowCustomize) customizePanel.Draw();
+			if (colCount > 1) ImGui.TableNextColumn();
+			if (configuration.ShowEquipSlots) equipSlotPanel.Draw();
+
+			ImGui.EndTable();
+			ImGui.Spacing();
+		}
 
 		private void DrawCustomizeOptions()
 		{
