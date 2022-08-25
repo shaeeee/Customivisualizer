@@ -13,9 +13,9 @@
 		"IsTestingExclusive": "False",
 		"DownloadCount": 0,
 		"LastUpdate": 0,
-		"DownloadLinkInstall": "https://github.com/shaeeee/Customivisualizer/releases/download/v0.1.2.0-beta/latest.zip",
-		"DownloadLinkTesting": "https://github.com/shaeeee/Customivisualizer/releases/download/v0.1.2.0-beta/latest.zip",
-		"DownloadLinkUpdate": "https://github.com/shaeeee/Customivisualizer/releases/download/v0.1.2.0-beta/latest.zip",
+		"DownloadLinkInstall": "https://github.com/shaeeee/Customivisualizer/releases/download/v0.1.2.0/latest.zip",
+		"DownloadLinkTesting": "https://github.com/shaeeee/Customivisualizer/releases/download/v0.1.2.0/latest.zip",
+		"DownloadLinkUpdate": "https://github.com/shaeeee/Customivisualizer/releases/download/v0.1.2.0/latest.zip",
 		"IconUrl": "https://raw.githubusercontent.com/shaeeee/Customivisualizer/master/Resources/forg.png"
 	}
 ]
