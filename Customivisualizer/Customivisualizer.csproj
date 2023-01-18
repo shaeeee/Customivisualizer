@@ -3,10 +3,10 @@
   <PropertyGroup>
     <Authors>Shae</Authors>
     <Company></Company>
-    <Version>0.1.2.0</Version>
+    <Version>0.1.3.0</Version>
     <Description>Allows clientsided previewing and modification of player appearance data.</Description>
     <Copyright></Copyright>
-    <PackageProjectUrl>https://github.com/shaeeee/Customivisualizer</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/Megasder/CustomivisualizerPersonal</PackageProjectUrl>
   </PropertyGroup>
 
   <PropertyGroup>
